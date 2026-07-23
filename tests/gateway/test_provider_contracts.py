@@ -146,7 +146,7 @@ def test_stepfun_audio_requests_map_documented_fields() -> None:
     assert asr["language"] == "en"
     assert b'name="response_format"' in client.calls[0]["body"]
     assert b"json" in client.calls[0]["body"]
-    assert client.calls[1]["url"].endswith("/audio/create-audio")
+    assert client.calls[1]["url"].endswith("/audio/speech")
     assert client.calls[1]["payload"]["model"] == "step-tts-mini"
     assert audio == b"WAV"
     assert media_type == "audio/wav"

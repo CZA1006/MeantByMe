@@ -56,9 +56,12 @@ class ProviderHttpClient:
         headers: dict[str, str],
     ) -> ProviderResponse:
         last_error: ProviderRequestError | None = None
+        # Some provider gateways (e.g. OpenAgents) reject the default
+        # "Python-urllib" User-Agent with HTTP 403; set an explicit one.
+        request_headers = {"User-Agent": "MeantByMe-Gateway/0.2", **headers}
         for attempt in range(self._max_attempts):
             request = urllib.request.Request(
-                url, data=body, headers=headers, method="POST"
+                url, data=body, headers=request_headers, method="POST"
             )
             try:
                 with urllib.request.urlopen(

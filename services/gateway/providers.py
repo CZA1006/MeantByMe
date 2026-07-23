@@ -132,7 +132,8 @@ class CloudProviderService:
             "response_format": "wav",
         }
         response = self._client.post_json(
-            f"{self.settings.stepfun_base_url}/audio/create-audio",
+            # StepFun TTS lives at /audio/speech; /audio/create-audio is 404.
+            f"{self.settings.stepfun_base_url}/audio/speech",
             payload,
             headers={
                 "Authorization": f"Bearer {self.settings.stepfun_api_key}",
