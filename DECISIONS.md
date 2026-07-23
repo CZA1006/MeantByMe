@@ -228,6 +228,95 @@ class ConfirmationMethod(StrEnum):
 
 ---
 
+---
+
+# Agent / Runtime 设计决策(D10–D16)
+
+以下为 runtime 行为的确定性设计,由 **Nick**(agent/runtime owner)于 2026-07-23 确认冻结。来源为设计对齐讨论,非文档冲突。所有决策均不得违反 D1–D9 与安全不变量。
+
+## D10 — Uncertainty band 判定规则 🔴
+
+**决定:** band 在**候选生成之前**计算,只依据 `TranscriptEvidence` 字段(确定性规则,非概率分数):
+
+- **HIGH** 若:两路 ASR 均 failed/timeout,**或** `len(stable_fragments) < 2`,**或**(`missing_slots` 含核心槽位 **且** `conflicts` 非空)
+- **LOW** 若:`conflicts` 为空 **且** `missing_slots` 为空 **且** 核心槽位齐全
+- **MEDIUM:** 其余情况
+
+**核心槽位定义:** 谓语 + (宾语 或 时间)必须出现在 `stable_fragments` 中,否则至少 MEDIUM。
+
+**理由:** 需要可执行、可测、偏保守的路由规则;禁止伪精确概率([docs/04_AGENT_RUNTIME.md:113](docs/04_AGENT_RUNTIME.md))。
+
+**影响:** `core/runtime` uncertainty router、`tests/unit` 路由测试。
+
+## D11 — Memory 可下调 band 一档,永不自动选择 🔴
+
+**决定:** 强 verified memory 命中可将 band 下调**一档**(HIGH→MEDIUM,MEDIUM→直接进 FINAL_REVIEW),**绝不下调至自动选择,始终经 FINAL_REVIEW 患者确认**。
+
+**理由:** 体现"个性化让正确候选浮上来"([docs/02_STORYTELLING_AND_DEMO.md:183-191](docs/02_STORYTELLING_AND_DEMO.md)),同时守住确认底线([docs/05_MEMORY_AND_PERSONALIZATION.md:99-105](docs/05_MEMORY_AND_PERSONALIZATION.md))。
+
+**影响:** uncertainty router、ranker、`tests/safety`(memory 不自动选)。
+
+## D12 — GO_BACK 为线性单步,授权后不可逆 🔴
+
+**决定:** `GO_BACK` 为**线性单步 undo**,每次退一个阶段;session 仅需保存上一步状态。可逆映射:
+
+| 从 | 回到 | 清除 |
+|----|------|------|
+| FINAL_REVIEW | CANDIDATE_SELECTION | `selected_candidate_id`、`patient_confirmed=false` |
+| CANDIDATE_SELECTION | CATEGORY_CLARIFICATION / HEARD_CONTENT_REVIEW | 候选列表 |
+| CATEGORY_CLARIFICATION | HEARD_CONTENT_REVIEW | 类别选择 |
+| VOICE_AUTHORIZED / SPOKEN 之后 | **不可回退** | — |
+
+**理由:** 单步符合"一屏一决定"([docs/06_INTERACTION_AND_ACCESSIBILITY.md:10-11](docs/06_INTERACTION_AND_ACCESSIBILITY.md)),实现与可逆规则简单;已说出的话不可撤销。
+
+**影响:** `core/runtime` 状态机、`tests/safety`(go-back 只逆可逆状态)。
+
+## D13 — 新增 `ConfirmedContext` 累加器(domain 对象) 🔴
+
+**决定:** session 内新增 `ConfirmedContext`,跨澄清轮锁定已确认进度,每轮候选生成作为**硬约束**传给 LLM。字段:
+
+```python
+class ConfirmedContext(BaseModel):
+    locked_slots: dict[str, str]   # 已确认槽位:类别/否定/时间/对象…
+    locked_tokens: list[str]       # 必须保留的词(如 "tomorrow")
+    rejected_texts: list[str]      # 已拒绝候选(对应 rejected_candidates 表 D4)
+```
+
+**理由:** "猜错保留进度"([docs/01_PRODUCT_VISION.md:70-72](docs/01_PRODUCT_VISION.md))与"部分修正只改 AI-added span"([docs/06_INTERACTION_AND_ACCESSIBILITY.md:88-91](docs/06_INTERACTION_AND_ACCESSIBILITY.md))的技术载体,是产品差异化核心。
+
+**影响:** `core/domain` 新增 schema、`ExpressionSession`、LLM prompt 约束、`tests/safety`(None-of-these 保留已确认片段)。
+
+## D14 — Ranker 分数永不触发自动选择(硬断言) 🔴
+
+**决定:** ranker 分数**仅用于排序**。`select_candidate` 只能来自 `PatientCommand`;runtime 内以断言保证 ranker 输出永不产生选择,即使 top1 分数遥遥领先。
+
+**理由:** 分数是排序启发式而非概率或授权([docs/04_AGENT_RUNTIME.md:174](docs/04_AGENT_RUNTIME.md));自动选即以推测替患者决策,违反第一原则。对应必测项 "memory retrieval never auto-selects"([docs/11_EVALUATION_AND_TESTING.md:97](docs/11_EVALUATION_AND_TESTING.md))。
+
+**影响:** `core/personalization` ranker、`core/runtime` 命令处理、`tests/safety`。
+
+## D15 — 两层 consent 模型 🔴
+
+**决定:** 声音授权拆为两个独立对象:
+
+1. **声音克隆/使用同意(长期):** 患者级、建 voice profile 时给予、可撤销,存 `authorizations` 表(D4)。
+2. **本次表达授权(一次性):** `AuthorizedExpression`,scope=`this_expression`,每次表达现场铸造,说完即失效。
+
+`can_use_personal_voice` 必须**同时**满足:本次 `patient_confirmed` ∧ stage 到位 ∧ 存在有效且未撤销的第 1 层声音同意。撤销第 1 层立即使所有后续表达失去个人声音。
+
+**理由:** "A cloned voice is not cloned consent"([docs/08_SECURITY_AND_CONSENT.md:64-76](docs/08_SECURITY_AND_CONSENT.md))唯一严谨的实现;支持细粒度撤销。
+
+**影响:** `core/policies/authorization.py`、`authorizations` 表、`tests/safety`。
+
+## D16 — 高风险用 FINAL_REVIEW 上的 strict 标志 🔴
+
+**决定:** 高风险表达**不新增状态**,在 FINAL_REVIEW 上挂 `strict=true`,强制:完整私密读回 + 显式确认 +(必要时)第二确认方式。风险在**选定候选的最终文本**上用 D5 确定性词表判定,时机在铸造 `AuthorizedExpression` **之前**。
+
+**理由:** 状态机节点更少、三天更稳;满足高风险严格确认([docs/06_INTERACTION_AND_ACCESSIBILITY.md:141-152](docs/06_INTERACTION_AND_ACCESSIBILITY.md))。若未来高风险流程需外部复核,可再抽为独立状态。
+
+**影响:** `core/runtime` FINAL_REVIEW、`core/policies/risk.py`、`tests/safety`(高风险严格确认)。
+
+---
+
 ## 决策汇总
 
 | ID | 主题 | 阻塞里程碑 1 | Owner | 状态 |
@@ -241,8 +330,15 @@ class ConfirmationMethod(StrEnum):
 | D7 | PySide6 线程模型 | ⚪ | An | ✅ 已冻结 |
 | D8 | 幂等键定义 | ⚪ | Nick | ✅ 已冻结 |
 | D9 | confirmation_method 枚举 | ⚪ | Nick | ✅ 已冻结 |
+| D10 | Uncertainty band 判定规则 | 🔴 | Nick | ✅ 已冻结 |
+| D11 | Memory 下调 band 一档 | 🔴 | Nick | ✅ 已冻结 |
+| D12 | GO_BACK 线性单步 | 🔴 | Nick | ✅ 已冻结 |
+| D13 | ConfirmedContext 累加器 | 🔴 | Nick | ✅ 已冻结 |
+| D14 | Ranker 不自动选(断言) | 🔴 | Nick | ✅ 已冻结 |
+| D15 | 两层 consent 模型 | 🔴 | Nick | ✅ 已冻结 |
+| D16 | 高风险 strict 标志 | 🔴 | Nick | ✅ 已冻结 |
 
-**开工前必须确认的阻塞项:** D1、D2、D4、D5(D3 的 schema 部分)。其余可在里程碑 1 期间随实现确认。
+**开工前必须确认的阻塞项:** D1、D2、D4、D5(D3 的 schema 部分),及 agent/runtime 的 D10–D16。全部已冻结。
 
 ---
 
@@ -252,3 +348,4 @@ class ConfirmationMethod(StrEnum):
 |------|------|------|--------|
 | 2026-07-23 | D1–D9 | 初次提出 | 初始 onboarding review |
 | 2026-07-23 | D1–D9 | 全部确认冻结 | 决策负责人确认 |
+| 2026-07-23 | D10–D16 | 新增 agent/runtime 设计决策并冻结 | Nick 确认 |
