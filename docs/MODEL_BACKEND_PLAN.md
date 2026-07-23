@@ -23,7 +23,7 @@
 | 组件 | 赞助商覆盖 | 状态 |
 |---|---|---|
 | 意图 LLM(候选生成) | **StepFun 文本 LLM**;备份 OpenAgents(GLM/kimi $100)、OneLinkAI $20、清程极智 ¥58 | ✅ 多重覆盖 |
-| 个人声音克隆 TTS | **StepFun / StepAudio create-voice** | ✅(待确认免费额度) |
+| 个人声音克隆 TTS | **StepFun `POST /v1/audio/voices`**(stepaudio-2.5-tts / step-tts-mini) | ✅ 已确认能力 |
 | 中性 TTS | 系统声音(本地,免费)或 StepAudio | ✅ |
 | 主 ASR | StepAudio ASR;或自部署 Qwen3-ASR 到 GPU;或 whisper.cpp 本地 | ✅ 替代 viaim |
 | 次 ASR(双源证据) | whisper.cpp 本地 / 自部署 | ✅ |
@@ -36,7 +36,29 @@
 
 **唯一无直接赞助:** viaim(流式耳机 ASR)——已由 StepAudio ASR / 自部署 Qwen3-ASR 替代,且耳机后移给 Jiayi,功能无缺口。
 
-**唯一待确认:** StepAudio `create-voice`(声音克隆)+ ASR 是否在 ¥199 StepPlan 额度内,还是要走 Step-explore 内部模型申请。
+**已确认(2026-07-24):StepFun 一家覆盖整个模型层。** 见下 §E。个人声音克隆缺口已关闭。
+
+**唯一待验证(非申请):** 已拿到的 StepFun key 能否直达标准 `/v1/audio/*`(ASR/TTS/voices),以及计费走 StepPlan 额度还是余额。一条测试 curl 即可确认。
+
+## E. StepFun 能力(已确认,公开 API 事实)
+
+| 能力 | 模型 ID | 端点 / 格式 |
+|---|---|---|
+| ASR(中英混) | `step-asr`(实时+离线)、`stepaudio-2.5-asr`(流式)、`stepaudio-2-asr-pro`(32B) | `/v1/audio/*`(asr-sse 流式) |
+| 中性 TTS | `step-tts-mini`(19 音色, 中/英/日)、`stepaudio-2.5-tts` | `POST /v1/audio/create-audio` |
+| 个人声音克隆 | `stepaudio-2.5-tts` / `step-tts-mini` | `POST /v1/audio/voices`,传 5–10s WAV/MP3 → 返回 `voice id` |
+| 文本 LLM | `step-explore`(审核中) / StepPlan 标准文本模型 | `/v1/messages`(x-api-key)或 `step_plan/v1` |
+
+**两种 auth:** 标准 `/v1/audio/*` 用 `Authorization: Bearer <key>`;`step-explore` 的 `/v1/messages` 用 `x-api-key: <key>` + `anthropic-version: 2023-06-01`,**禁传 `thinking`**,429 指数退避。
+
+**备用 LLM(已申请):** OpenAgents,`POST https://api-gateway.openagents.org/v1/chat/completions`,`Authorization: Bearer`,OpenAI 兼容,模型如 `deepseek-v4-pro`。
+
+## F. Secrets 处理(强制)
+
+- API key **只放 gateway 的 `.env`(已 gitignore)或 Zeabur 环境变量/密钥管理**;**永不进 git**(仓库 public)。
+- `.env.example` 只放占位符。
+- key 若在聊天/截图等处明文出现过,**建议赛后轮换**。
+- 桌面 bundle、日志、receipt 都不得含 key。
 
 ## B. 申请清单(按优先级 + 截止排序)
 
@@ -49,7 +71,7 @@
    - 在开放平台生成 **API Key**(gateway 要配)
    - 顺便填 **Step-explore 内部模型开通申请表**(以防 StepAudio ASR/声音克隆在内部模型)
    - ⏰ 截止 **2026-07-26**
-   - [ ] 已领 Token  [ ] 已生成 Key  [ ] 已确认 StepAudio ASR/create-voice 可用
+   - [x] 已领 Token  [x] 已生成 Key(step_plan/v1)  [~] step-explore 审核中  [ ] 待验证 key 直达 /v1/audio/*
 
 2. **HyperAI 超神经 GPU** — 自部署 Qwen3-ASR / 本地 LLM 算力
    - 兑换码:`HyperAI_AdventureX202607`(RTX 5090 60h + RTX PRO 6000 12h + 20GB)
@@ -65,7 +87,7 @@
 
 4. **OpenAgents $100 API Key** — LLM 备份(GLM/kimi)
    - `https://api-gateway.openagents.org/register_advx/`(填对姓名+email)
-   - [ ] 已领
+   - [x] 已领(OpenAI 兼容 /v1/chat/completions,deepseek-v4-pro 等)
 
 5. **矩池云 GPU** — 备份算力(4090)
    - `https://www.matpool.com/user/welfare?type=b`(输群内兑换码)
