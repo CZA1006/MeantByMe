@@ -26,6 +26,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--patient-id", default="manual-smoke-patient")
     parser.add_argument("--session-id", default="manual-smoke-session")
+    parser.add_argument(
+        "--situation",
+        default=(
+            "A friend asked if he wants to go out tomorrow. "
+            "Tomorrow is Sunday."
+        ),
+    )
     parser.add_argument("--timeout", type=float, default=30.0)
     return parser
 
@@ -73,6 +80,7 @@ def main() -> int:
             client=client,
             patient_id=args.patient_id,
             session_id=args.session_id,
+            situation=args.situation,
         ).propose(evidence, [], ConfirmedContext())
         neutral = GatewayTTSAdapter(client=client).synthesize_neutral(
             proposal.candidates[0]
@@ -82,11 +90,13 @@ def main() -> int:
         "health": health,
         "asr_provider": asr_results[0].provider,
         "asr_status": asr_results[0].status,
+        "transcript": asr_results[0].transcript,
         "language": asr_results[0].language,
         "candidate_count": len(proposal.candidates),
         "candidate_ids": [
             candidate.id for candidate in proposal.candidates
         ],
+        "situation_supplied": bool(args.situation),
         "requires_confirmation": proposal.requires_confirmation,
         "neutral_tts_status": neutral.status,
         "neutral_tts_media_type": neutral.media_type,

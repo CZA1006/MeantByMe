@@ -214,6 +214,7 @@ class ExpressionSession(DomainModel):
     patient_id: str
     stage: SessionStage = SessionStage.READY
     language: str | None = None
+    situation: str | None = None
     voice_profile_id: str
     evidence: TranscriptEvidence | None = None
     retrieved_memories: list[MemoryItem] = Field(default_factory=list)

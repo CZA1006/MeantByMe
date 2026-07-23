@@ -197,6 +197,8 @@ def run_cloud(
     audio_store_dir: Path | None = None,
     timeout_seconds: float = 20.0,
     max_attempts: int = 2,
+    situation: str | None = None,
+    voice_profile_id: str = "cixingnansheng",
 ) -> dict:
     repository, patient, profile, fixture, _ = _seed_demo_repository(database)
     store_root = audio_store_dir or (
@@ -217,6 +219,16 @@ def run_cloud(
         raise ValueError("cloud mode requires a WAV file or microphone duration")
 
     session_id = f"cloud-{uuid4().hex}"
+    if voice_profile_id != profile["voice_consent"]["voice_profile_id"]:
+        repository.grant_voice_consent(
+            patient["id"],
+            (
+                f"{profile['voice_consent']['authorization_id']}"
+                f"-{voice_profile_id}"
+            ),
+            profile["voice_consent"]["consent_session_id"],
+            voice_profile_id,
+        )
     client = GatewayHttpClient(
         gateway_url,
         timeout_seconds=timeout_seconds,
@@ -233,6 +245,7 @@ def run_cloud(
             client=client,
             patient_id=patient["id"],
             session_id=session_id,
+            situation=situation,
         ),
         tts=GatewayTTSAdapter(
             client=client,
@@ -244,7 +257,8 @@ def run_cloud(
         session_id=session_id,
         patient_id=patient["id"],
         language=fixture["language"],
-        voice_profile_id=profile["voice_consent"]["voice_profile_id"],
+        voice_profile_id=voice_profile_id,
+        situation=situation,
     )
     _drive_golden_path(
         runtime,
@@ -294,6 +308,15 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Directory for private normalized WAV files",
     )
+    parser.add_argument(
+        "--situation",
+        help="Current situational evidence for intent disambiguation",
+    )
+    parser.add_argument(
+        "--voice-profile-id",
+        default="cixingnansheng",
+        help="Official or enrolled StepFun voice for confirmed output",
+    )
     return parser
 
 
@@ -319,6 +342,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             audio_store_dir=args.audio_store_dir or settings.audio_store_dir,
             timeout_seconds=settings.gateway_timeout_seconds,
             max_attempts=settings.gateway_max_attempts,
+            situation=args.situation,
+            voice_profile_id=args.voice_profile_id,
         )
     elif args.mode == "fallback":
         result = run_fallback(args.database)

@@ -81,6 +81,7 @@ class MeantByMeRuntime:
         patient_id: str,
         language: str,
         voice_profile_id: str,
+        situation: str | None = None,
     ) -> ExpressionSession:
         if self._session is not None:
             raise RuntimeError("Runtime already has an active session")
@@ -89,6 +90,7 @@ class MeantByMeRuntime:
             patient_id=patient_id,
             language=language,
             voice_profile_id=voice_profile_id,
+            situation=situation,
         )
         self._repository.create_session(patient_id, self._session)
         self._emit(RuntimeEventType.SESSION_STARTED, {"mode": "mock"})

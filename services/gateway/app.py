@@ -29,6 +29,7 @@ class IntentRequest(GatewayModel):
     patient_id: str = Field(min_length=1)
     session_id: str = Field(min_length=1)
     language: str | None = None
+    situation: str | None = None
     evidence: dict[str, Any]
     memories: list[dict[str, Any]] = Field(default_factory=list, max_length=20)
     confirmed_context: dict[str, Any]
@@ -86,11 +87,15 @@ def create_app(
     async def health() -> dict[str, Any]:
         return {
             "status": "ok",
+            "stepfun_base_url": active_settings.stepfun_base_url,
             "intent_provider": active_settings.intent_provider,
             "intent_model": active_settings.intent_model,
-            "asr_model": "step-asr",
-            "neutral_tts_model": "step-tts-mini",
+            "asr_model": "stepaudio-2.5-asr",
+            "neutral_tts_model": "stepaudio-2.5-tts",
             "personal_tts_model": "stepaudio-2.5-tts",
+            "voice_cloning_enabled": (
+                active_settings.enable_voice_cloning
+            ),
             "stepfun_configured": bool(active_settings.stepfun_api_key),
             "openagents_configured": bool(
                 active_settings.openagents_api_key
@@ -145,8 +150,10 @@ def create_app(
         request: Request,
         x_patient_id: str = Header(...),
         x_session_id: str = Header(...),
-    ) -> dict[str, str]:
+    ) -> dict[str, str | None]:
         del x_patient_id, x_session_id
+        if not active_settings.enable_voice_cloning:
+            return {"voice_id": None}
         wav_bytes = await request.body()
         _validate_audio(wav_bytes)
         _validate_voice_sample(wav_bytes)

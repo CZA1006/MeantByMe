@@ -13,9 +13,10 @@ The development server binds to `127.0.0.1:8000`. It does not log request
 bodies, headers, raw audio, candidate text, memory content, or provider
 responses.
 
-`INTENT_PROVIDER=openagents` and `INTENT_MODEL=deepseek-v4-pro` are the
-defaults. Use `INTENT_MODEL=deepseek-4-flash` for the faster OpenAgents option,
-or set `INTENT_PROVIDER=stepfun` and `INTENT_MODEL=step-explore`.
+The defaults use Step Plan:
+`STEPFUN_BASE_URL=https://api.stepfun.com/step_plan/v1`,
+`INTENT_PROVIDER=stepfun`, and `INTENT_MODEL=step-explore`. OpenAgents remains
+available as a fallback configuration.
 
 In another terminal, run the manual provider smoke check with a 16 kHz mono
 WAV (other PCM WAV inputs are normalized locally):
@@ -24,20 +25,24 @@ WAV (other PCM WAV inputs are normalized locally):
 ./.venv/bin/python scripts/smoke_cloud.py path/to/input.wav
 ```
 
-This checks gateway health, StepFun `step-asr`, the configured intent model,
-and neutral `step-tts-mini`. It does not enroll or invoke a personal voice.
-The script sends no provider key; keys remain in the gateway process.
+This checks gateway health, StepFun `stepaudio-2.5-asr`, the configured intent
+model with situational context, and neutral `stepaudio-2.5-tts`. It does not
+enroll or invoke a personal voice. The script sends no provider key; keys
+remain in the gateway process.
 
-Voice enrollment accepts a 5-10 second WAV at the gateway. The gateway uploads
-it to StepFun file storage with `purpose=storage`, then exchanges the returned
-`file_id` for a voice ID through `/v1/audio/voices`.
+Voice cloning is disabled by default. With `ENABLE_VOICE_CLONING=true`, a
+5-10 second WAV is uploaded to the standard StepFun file service with
+`purpose=storage`, then its `file_id` is exchanged for a voice ID through the
+Step Plan `/audio/voices` endpoint. A disabled flow or standard-account 402
+returns no voice ID and does not fail the runtime.
 
 To drive the full consent-first runtime through the gateway:
 
 ```bash
 ./.venv/bin/python -m meantbyme \
   --mode cloud \
-  --audio path/to/input.wav
+  --audio path/to/input.wav \
+  --situation "A friend asked about tomorrow's plans."
 ```
 
 For microphone capture, replace `--audio` with

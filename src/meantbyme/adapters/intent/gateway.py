@@ -20,11 +20,13 @@ class GatewayIntentAdapter:
         client: GatewayHttpClient,
         patient_id: str,
         session_id: str,
+        situation: str | None = None,
         fallback: TemplateIntentAdapter | None = None,
     ) -> None:
         self._client = client
         self._patient_id = patient_id
         self._session_id = session_id
+        self._situation = situation
         self._fallback = fallback or TemplateIntentAdapter()
 
     def propose(
@@ -36,6 +38,7 @@ class GatewayIntentAdapter:
         payload = {
             "patient_id": self._patient_id,
             "session_id": self._session_id,
+            "situation": self._situation,
             "language": next(
                 (
                     result.language

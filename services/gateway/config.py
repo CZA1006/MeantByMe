@@ -10,21 +10,26 @@ from dotenv import load_dotenv
 class GatewaySettings:
     stepfun_api_key: str = field(default="", repr=False)
     openagents_api_key: str = field(default="", repr=False)
-    intent_provider: str = "openagents"
-    intent_model: str = "deepseek-v4-pro"
+    intent_provider: str = "stepfun"
+    intent_model: str = "step-explore"
     provider_timeout_seconds: float = 20.0
     route_timeout_seconds: float = 30.0
     provider_max_attempts: int = 3
     retry_backoff_seconds: float = 0.5
     neutral_voice: str = "cixingnansheng"
-    stepfun_base_url: str = "https://api.stepfun.com/v1"
+    enable_voice_cloning: bool = False
+    stepfun_base_url: str = "https://api.stepfun.com/step_plan/v1"
     openagents_base_url: str = "https://api-gateway.openagents.org/v1"
+
+    def __post_init__(self) -> None:
+        if self.provider_max_attempts < 3:
+            object.__setattr__(self, "provider_max_attempts", 3)
 
     @classmethod
     def from_env(cls, *, load_local_env: bool = True) -> "GatewaySettings":
         if load_local_env:
             load_dotenv(override=False)
-        provider = os.getenv("INTENT_PROVIDER", "openagents").casefold()
+        provider = os.getenv("INTENT_PROVIDER", "stepfun").casefold()
         if provider not in {"openagents", "stepfun"}:
             raise ValueError("INTENT_PROVIDER must be openagents or stepfun")
         default_model = (
@@ -42,7 +47,7 @@ class GatewaySettings:
                 os.getenv("ROUTE_TIMEOUT_SECONDS", "30")
             ),
             provider_max_attempts=max(
-                1, int(os.getenv("PROVIDER_MAX_ATTEMPTS", "3"))
+                3, int(os.getenv("PROVIDER_MAX_ATTEMPTS", "3"))
             ),
             retry_backoff_seconds=max(
                 0.0, float(os.getenv("RETRY_BACKOFF_SECONDS", "0.5"))
@@ -50,11 +55,22 @@ class GatewaySettings:
             neutral_voice=os.getenv(
                 "STEPFUN_NEUTRAL_VOICE", "cixingnansheng"
             ),
+            enable_voice_cloning=_env_flag("ENABLE_VOICE_CLONING"),
             stepfun_base_url=os.getenv(
-                "STEPFUN_BASE_URL", "https://api.stepfun.com/v1"
+                "STEPFUN_BASE_URL",
+                "https://api.stepfun.com/step_plan/v1",
             ).rstrip("/"),
             openagents_base_url=os.getenv(
                 "OPENAGENTS_BASE_URL",
                 "https://api-gateway.openagents.org/v1",
             ).rstrip("/"),
         )
+
+
+def _env_flag(name: str) -> bool:
+    return os.getenv(name, "false").strip().casefold() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
