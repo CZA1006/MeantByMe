@@ -72,3 +72,44 @@ Extend the existing `--mode` switch: `mock` (unchanged), `cloud` (gateway-backed
 - **Out of scope for M2:** streaming partials, edge MLX/whisper.cpp (M-Mac), packaging, PySide6 UI (An's track).
 
 Report back with: adapters added, stub-gateway test results, confirmation `core/` is unchanged, and any provider contract field that didn't map cleanly (list it — do not invent).
+
+---
+
+# 落地版补充(2026-07-24,provider 已验证,覆盖上文泛化部分)
+
+Scope 收敛为**软件核心优先**:识别语言 / 识别意图 / 用户交互 / 补全 / 记忆自进化。**音频从麦克风或 WAV 文件进(不接耳机)**;耳机(viaim/Air 2)采音与私密回放**后移给 Jiayi**。**我们自己建一个最小 gateway**(先 localhost,Jiayi 后续加固/部署),持 key。
+
+## 已验证的 provider 栈(2026-07-24 实测全部 200)
+
+- **意图 LLM 主 — StepFun `step-explore`**(已审核通过,实测干净输出)
+  - `POST https://api.stepfun.com/v1/messages`,头 `x-api-key: <key>` + `anthropic-version: 2023-06-01` + `content-type: application/json`
+  - body:`model: "step-explore"`、`max_tokens`(必填)、`messages`(Anthropic 格式 role user/assistant)、`system`(顶层)、可选 `stream`
+  - **禁传 `thinking`**;429 `rate_limited` → 指数退避
+- **意图 LLM 备 — OpenAgents `deepseek-4-flash`**
+  - `POST https://api-gateway.openagents.org/v1/chat/completions`,头 `Authorization: Bearer <key>`,OpenAI 兼容,输出干净
+- **意图 LLM 兜底 — 确定性模板**(D5;LLM 全挂或 JSON 非法时)
+- **ASR — StepFun `step-asr`**(中英混,实时+离线)
+  - StepFun 标准 `/v1` 面,`Authorization: Bearer <key>`;音频取自 `AudioStore`(mic/文件,16k mono WAV);`stepaudio-2.5-asr` 为备选
+- **中性 TTS — StepFun `step-tts-mini`**(官方音色)`POST /v1/audio/create-audio`
+- **个人声音克隆 — StepFun**:先 `POST https://api.stepfun.com/v1/audio/voices`(5–10s WAV/MP3 → 返回 `voice id`),再用 `stepaudio-2.5-tts` + 该 voice id 合成;**只从 `synthesize_personal(AuthorizedExpression)` 调**
+- ⚠️ **不要用 `step-3.7-flash` 做结构化候选**:它是 reasoning 模型,reasoning token 吃预算、`content` 易空
+
+**两种 auth 并存**:StepFun 标准 `/v1/audio/*` 用 `Bearer`;`step-explore` 的 `/v1/messages` 用 `x-api-key`。gateway 内部封装,adapter 不感知。
+
+## 结构化输出
+
+意图 adapter 请求候选 JSON(2–3 distinct candidates + span 标注 + `requires_confirmation:true`,无 speak/authorize/write 字段),desktop 侧用 `IntentProposal`(`extra="forbid"`)校验;校验失败或超时 → OpenAgents 备用 → 仍失败 → 模板兜底。风险分级仍确定性(D5)。
+
+## Secrets(强制)
+
+- key 只进 gateway `.env`(已 gitignore)或 Zeabur/部署平台环境变量;**永不进 git**(仓库 public),不进日志/receipt/桌面 bundle
+- `.env.example` 只放占位符
+- key 若在聊天/截图明文出现过,**赛后轮换**
+
+## 验收(在上文基础上)
+
+- `cloud` 模式对**桩 gateway**跑通 golden path(不烧真实额度),Unauthorized Voice Rate = 0
+- 一次**真实 smoke**:`step-explore` 出候选 + `step-asr` 转一段文件音频 + `step-tts-mini` 合成中性音,手动跑一遍确认
+- `core/` diff 为空(除可能新增 `AudioStore`);安全测试全绿;仓库无 key
+
+其余(不变量、degradation matrix、ownership)沿用上文。
