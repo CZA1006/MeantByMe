@@ -47,6 +47,7 @@ def _asr(
 
 def test_gateway_adapter_success_mapping(tmp_path: Path) -> None:
     state = StubGatewayState(secondary_available=True)
+    situation = "A friend asked about tomorrow's plan."
     with running_stub_gateway(state) as gateway:
         client = GatewayHttpClient(gateway.base_url, max_attempts=1)
         store = _audio_store(tmp_path)
@@ -56,13 +57,14 @@ def test_gateway_adapter_success_mapping(tmp_path: Path) -> None:
             client=client,
             patient_id=PATIENT_ID,
             session_id=SESSION_ID,
+            situation=situation,
         ).propose(evidence, [], ConfirmedContext())
         neutral = GatewayTTSAdapter(client=client).synthesize_neutral(
             proposal.candidates[0]
         )
 
     assert [item.provider for item in results] == [
-        "stub_step_asr",
+        "stepfun_stepaudio_asr",
         "stub_secondary_asr",
     ]
     assert all(item.status == "success" for item in results)
@@ -71,6 +73,8 @@ def test_gateway_adapter_success_mapping(tmp_path: Path) -> None:
     assert neutral.status == "success"
     assert neutral.media_type == "audio/wav"
     assert neutral.audio_bytes is not None
+    assert state.last_intent_payload is not None
+    assert state.last_intent_payload["situation"] == situation
 
 
 def test_gateway_timeout_returns_failure_status(tmp_path: Path) -> None:
@@ -117,6 +121,28 @@ def test_invalid_intent_json_uses_template_fallback(tmp_path: Path) -> None:
     )
 
 
+def test_intent_timeout_uses_template_fallback(tmp_path: Path) -> None:
+    state = StubGatewayState(intent_delay_seconds=0.2)
+    with running_stub_gateway(state) as gateway:
+        store = _audio_store(tmp_path)
+        evidence = build_transcript_evidence(
+            _asr(gateway.base_url, store).transcribe(AUDIO_ID)
+        )
+        proposal = GatewayIntentAdapter(
+            client=GatewayHttpClient(
+                gateway.base_url,
+                timeout_seconds=0.02,
+                max_attempts=1,
+            ),
+            patient_id=PATIENT_ID,
+            session_id=SESSION_ID,
+            situation="A friend asked about tomorrow.",
+        ).propose(evidence, [], ConfirmedContext())
+
+    assert proposal.requires_confirmation is True
+    assert proposal.candidates[0].id == "template-c1"
+
+
 def test_secondary_missing_returns_single_source(tmp_path: Path) -> None:
     with running_stub_gateway() as gateway:
         results = _asr(
@@ -124,5 +150,5 @@ def test_secondary_missing_returns_single_source(tmp_path: Path) -> None:
         ).transcribe(AUDIO_ID)
 
     assert len(results) == 1
-    assert results[0].provider == "stub_step_asr"
+    assert results[0].provider == "stepfun_stepaudio_asr"
     assert results[0].status == "success"

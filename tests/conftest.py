@@ -42,6 +42,7 @@ def make_harness(
     intent: IntentPort | None = None,
     repository: SQLiteRepository | None = None,
     session_id: str = "test-session-001",
+    situation: str | None = None,
     asr_fixtures: dict[str, list[dict[str, Any]]] | None = None,
 ) -> Harness:
     repo = repository or SQLiteRepository()
@@ -105,6 +106,7 @@ def make_harness(
         patient_id=PATIENT_ID,
         language="en",
         voice_profile_id=VOICE_PROFILE_ID,
+        situation=situation,
     )
     return Harness(runtime=runtime, repository=repo, tts=tts)
 

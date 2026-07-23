@@ -25,10 +25,12 @@ def wav_bytes(*, duration_seconds: float = 0.05) -> bytes:
 @dataclass
 class StubGatewayState:
     asr_delay_seconds: float = 0.0
+    intent_delay_seconds: float = 0.0
     invalid_intent_json: bool = False
     secondary_available: bool = False
     personal_tts_failure: bool = False
     request_count: int = 0
+    last_intent_payload: dict | None = None
 
 
 class QuietThreadingHTTPServer(ThreadingHTTPServer):
@@ -89,7 +91,7 @@ class StubGateway:
                 if self.path == "/v1/asr/primary":
                     if state.asr_delay_seconds:
                         time.sleep(state.asr_delay_seconds)
-                    self._asr("stub_step_asr")
+                    self._asr("stepfun_stepaudio_asr")
                     return
                 if self.path == "/v1/asr/secondary":
                     if not state.secondary_available:
@@ -98,6 +100,8 @@ class StubGateway:
                     self._asr("stub_secondary_asr")
                     return
                 if self.path == "/v1/intent/propose":
+                    if state.intent_delay_seconds:
+                        time.sleep(state.intent_delay_seconds)
                     if state.invalid_intent_json:
                         self._write(
                             b"{not-json",
@@ -105,6 +109,7 @@ class StubGateway:
                         )
                         return
                     request_payload = json.loads(body or b"{}")
+                    state.last_intent_payload = request_payload
                     self._json(_intent_proposal(request_payload))
                     return
                 if self.path == "/v1/tts/synthesize":
@@ -162,6 +167,9 @@ def _intent_proposal(request_payload: dict) -> dict:
         for memory in request_payload.get("memories", [])
         if memory.get("text") == "I don't want to go tomorrow."
     ]
+    ranking_reasons = ["stub transcript evidence"]
+    if request_payload.get("situation"):
+        ranking_reasons.append("stub situational context")
 
     def candidate(
         candidate_id: str,
@@ -175,7 +183,7 @@ def _intent_proposal(request_payload: dict) -> dict:
             "patient_supported_spans": supported,
             "ai_added_spans": ai_added_spans,
             "memory_support_ids": memory_ids if candidate_id == "stub-c1" else [],
-            "ranking_reasons": ["stub transcript evidence"],
+            "ranking_reasons": ranking_reasons,
             "risk_level": "ordinary",
             "source_level": "L2",
         }
@@ -204,6 +212,30 @@ def _intent_proposal(request_payload: dict) -> dict:
         "clarification_options": [],
         "requires_confirmation": True,
     }
+
+
+def asr_sse_bytes(
+    transcript: str = " I don't want to go tomorrow."
+) -> bytes:
+    midpoint = max(1, len(transcript) // 2)
+    events = [
+        {
+            "type": "transcript.text.delta",
+            "delta": transcript[:midpoint],
+        },
+        {
+            "type": "transcript.text.delta",
+            "delta": transcript[midpoint:],
+        },
+        {
+            "type": "transcript.text.done",
+            "text": transcript,
+        },
+    ]
+    return (
+        "\n\n".join(f"data: {json.dumps(event)}" for event in events)
+        + "\n\ndata: [DONE]\n"
+    ).encode("utf-8")
 
 
 @contextmanager
