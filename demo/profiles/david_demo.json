@@ -1,0 +1,39 @@
+{
+  "label": "Simulated verified patient profile for demonstration.",
+  "patient": {
+    "id": "david_demo",
+    "display_name": "David",
+    "languages": [
+      "English",
+      "Mandarin"
+    ],
+    "confirmation_mode": "large_button",
+    "verified_phrases": [
+      {
+        "id": "mem-david-go-tomorrow",
+        "text": "I don't want to go tomorrow.",
+        "language": "en",
+        "confirmations": 2,
+        "context": {
+          "topic": "planning"
+        },
+        "confirmation_session_id": "historical-david-001"
+      },
+      {
+        "id": "mem-david-move-appointment",
+        "text": "Move my appointment to tomorrow.",
+        "language": "en",
+        "confirmations": 1,
+        "context": {
+          "topic": "schedule"
+        },
+        "confirmation_session_id": "historical-david-002"
+      }
+    ]
+  },
+  "voice_consent": {
+    "authorization_id": "voice-consent-david-demo",
+    "consent_session_id": "voice-enrollment-david-demo",
+    "voice_profile_id": "voice-david-demo"
+  }
+}

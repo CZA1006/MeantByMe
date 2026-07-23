@@ -35,6 +35,6 @@ dist/
 *.app
 
 # Raw patient audio must never be committed (see docs/08_SECURITY_AND_CONSENT.md).
-# Approved cached demo audio can be force-added with: git add -f <file>
-demo/audio/
+demo/audio/*
+!demo/audio/*.cache
 *.wav
