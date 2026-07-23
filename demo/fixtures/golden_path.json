@@ -1,0 +1,42 @@
+{
+  "session_id": "golden-path-session-001",
+  "audio_id": "david_fragment_001",
+  "language": "en",
+  "intended_expression": "I don't want to go tomorrow.",
+  "stable_fragments": [
+    "i",
+    "don't",
+    "tomorrow"
+  ],
+  "acceptable_candidates": [
+    "I don't want to go tomorrow."
+  ],
+  "risk_level": "ordinary",
+  "memory_expected_to_help": true,
+  "audio_fixtures": {
+    "david_fragment_001": [
+      {
+        "provider": "mock_primary",
+        "transcript": "I don't tomorrow",
+        "language": "en",
+        "segments": [],
+        "latency_ms": 12,
+        "status": "success",
+        "error": null
+      },
+      {
+        "provider": "mock_secondary",
+        "transcript": "I don't want tomorrow",
+        "language": "en",
+        "segments": [],
+        "latency_ms": 18,
+        "status": "success",
+        "error": null
+      }
+    ]
+  },
+  "tts": {
+    "neutral_cache": "demo/audio/neutral_candidate.cache",
+    "personal_cache": "demo/audio/david_personal_final.cache"
+  }
+}

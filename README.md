@@ -66,6 +66,20 @@ The team develops with Claude Code and Codex on:
 
 Heavy models are cloud- or remote-GPU-first. The Mac application owns interaction, state, memory, authorization, trace, and fallback behavior.
 
+## Milestone 1 mock runtime
+
+Milestone 1 is a headless, deterministic vertical slice. It uses fixture ASR,
+verified SQLite memory, deterministic candidates, cached TTS, and no network.
+
+```bash
+./.venv/bin/python -m pip install -e '.[test]'
+./.venv/bin/python -m meantbyme --mode mock
+./.venv/bin/python -m pytest
+```
+
+The mock command prints a structured event trace and exits successfully only
+when the session reaches `completed`.
+
 ## Documentation
 
 - [Product vision](docs/01_PRODUCT_VISION.md)
