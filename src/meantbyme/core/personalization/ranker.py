@@ -16,14 +16,21 @@ def _score(
     for memory in memories:
         if memory.text is None:
             continue
+        is_gold = memory.verification_level is VerificationLevel.GOLD
+        exact_weight = 1_000 if is_gold else 250
+        support_weight = 100 if is_gold else 40
+        similarity_weight = 25 if is_gold else 8
+        level_reason = "gold patient" if is_gold else "silver-assisted"
+
         if normalize(memory.text) == normalized_candidate:
-            score += 1_000
-            reasons.append("exact verified patient phrase")
-        elif memory.id in candidate.memory_support_ids:
-            score += 100
-            reasons.append("verified memory support")
+            score += exact_weight
+            reasons.append(f"exact {level_reason} phrase")
+        if memory.id in candidate.memory_support_ids:
+            score += support_weight
+            reasons.append(f"{level_reason} memory support")
         if memory.similarity_band == "high":
-            score += 25
+            score += similarity_weight
+            reasons.append(f"high-similarity {level_reason} memory")
 
     score -= len(candidate.ai_added_spans) * 2
     return score, list(dict.fromkeys(reasons))

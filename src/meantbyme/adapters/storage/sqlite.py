@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS memories (
     verification_level TEXT NOT NULL
         CHECK (verification_level IN ('gold','silver','unverified')),
     text TEXT,
+    language TEXT,
+    context TEXT,
     usage_count INTEGER NOT NULL DEFAULT 0,
     last_used_at TEXT,
     confirmation_session_id TEXT,
@@ -95,6 +97,7 @@ class SQLiteRepository:
         self._connection.row_factory = sqlite3.Row
         self._connection.execute("PRAGMA foreign_keys = ON")
         self._connection.executescript(SCHEMA)
+        self._migrate_memories_columns()
 
     def close(self) -> None:
         self._connection.close()
@@ -177,10 +180,13 @@ class SQLiteRepository:
             """
             INSERT INTO memories(
                 id, patient_id, memory_type, verification_level, text,
-                usage_count, last_used_at, confirmation_session_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                language, context, usage_count, last_used_at,
+                confirmation_session_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 text=excluded.text,
+                language=excluded.language,
+                context=excluded.context,
                 usage_count=excluded.usage_count,
                 last_used_at=excluded.last_used_at
             """,
@@ -190,6 +196,8 @@ class SQLiteRepository:
                 memory.memory_type.value,
                 memory.verification_level.value,
                 memory.text,
+                memory.language,
+                json.dumps(memory.context, sort_keys=True),
                 memory.usage_count,
                 (
                     memory.last_used_at.isoformat()
@@ -298,14 +306,17 @@ class SQLiteRepository:
                     """
                     INSERT INTO memories(
                         id, patient_id, memory_type, verification_level, text,
-                        usage_count, last_used_at, confirmation_session_id
-                    ) VALUES (?, ?, ?, 'gold', ?, ?, ?, ?)
+                        language, context, usage_count, last_used_at,
+                        confirmation_session_id
+                    ) VALUES (?, ?, ?, 'gold', ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         memory_id,
                         patient_id,
                         memory.memory_type.value,
                         memory.text,
+                        memory.language,
+                        json.dumps(memory.context, sort_keys=True),
                         max(memory.usage_count, 1),
                         now,
                         memory.confirmation_session_id,
@@ -466,6 +477,23 @@ class SQLiteRepository:
         if expected != actual:
             raise PermissionError("Cross-patient operation blocked")
 
+    def _migrate_memories_columns(self) -> None:
+        columns = {
+            row["name"]
+            for row in self._connection.execute(
+                "PRAGMA table_info(memories)"
+            ).fetchall()
+        }
+        if "language" not in columns:
+            self._connection.execute(
+                "ALTER TABLE memories ADD COLUMN language TEXT"
+            )
+        if "context" not in columns:
+            self._connection.execute(
+                "ALTER TABLE memories ADD COLUMN context TEXT"
+            )
+        self._connection.commit()
+
     def _require_scoped_session(
         self, patient_id: str, session_id: str
     ) -> None:
@@ -497,8 +525,8 @@ class SQLiteRepository:
             memory_type=MemoryType(row["memory_type"]),
             verification_level=VerificationLevel(row["verification_level"]),
             text=row["text"],
-            language=None,
-            context={},
+            language=row["language"],
+            context=json.loads(row["context"]) if row["context"] else {},
             usage_count=row["usage_count"],
             last_used_at=(
                 datetime.fromisoformat(row["last_used_at"])

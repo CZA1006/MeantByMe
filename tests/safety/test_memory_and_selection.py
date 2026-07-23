@@ -11,13 +11,19 @@ from conftest import (
     send,
 )
 from meantbyme.core.domain import (
+    ExpressionCandidate,
     MemoryItem,
     MemoryType,
     PatientCommandType,
+    RiskLevel,
     SessionStage,
     VerificationLevel,
 )
-from meantbyme.core.personalization import idempotency_key, normalize
+from meantbyme.core.personalization import (
+    idempotency_key,
+    normalize,
+    rank_candidates,
+)
 
 
 def test_ranker_and_memory_never_auto_select() -> None:
@@ -30,6 +36,73 @@ def test_ranker_and_memory_never_auto_select() -> None:
     )
     assert harness.runtime.session.selected_candidate_id is None
     assert harness.tts.personal_calls == 0
+
+
+def test_gold_outranks_silver_on_equal_text_match() -> None:
+    text = "I don't want to go tomorrow."
+    gold = MemoryItem(
+        id="gold-memory",
+        patient_id=PATIENT_ID,
+        memory_type=MemoryType.SEMANTIC,
+        verification_level=VerificationLevel.GOLD,
+        text=text,
+        confirmation_session_id="confirmed-session",
+    )
+    silver = MemoryItem(
+        id="silver-memory",
+        patient_id=PATIENT_ID,
+        memory_type=MemoryType.SEMANTIC,
+        verification_level=VerificationLevel.SILVER,
+        text=text,
+    )
+    shared_candidate_fields = {
+        "text": text,
+        "language": "en",
+        "patient_supported_spans": ["i", "don't", "tomorrow"],
+        "ai_added_spans": ["want to go"],
+        "ranking_reasons": [],
+        "risk_level": RiskLevel.ORDINARY,
+        "source_level": "L2",
+    }
+    silver_candidate = ExpressionCandidate(
+        id="silver-candidate",
+        memory_support_ids=[silver.id],
+        **shared_candidate_fields,
+    )
+    gold_candidate = ExpressionCandidate(
+        id="gold-candidate",
+        memory_support_ids=[gold.id],
+        **shared_candidate_fields,
+    )
+
+    ranked = rank_candidates(
+        [silver_candidate, gold_candidate], [silver, gold]
+    )
+
+    assert ranked[0].id == gold_candidate.id
+    assert any("gold" in reason for reason in ranked[0].ranking_reasons)
+
+
+def test_memory_context_and_language_round_trip() -> None:
+    harness = make_harness(with_memory=False)
+    memory = MemoryItem(
+        id="planning-memory",
+        patient_id=PATIENT_ID,
+        memory_type=MemoryType.SEMANTIC,
+        verification_level=VerificationLevel.GOLD,
+        text="I don't want to go tomorrow.",
+        language="en",
+        context={"topic": "planning"},
+        confirmation_session_id="confirmed-session",
+    )
+    harness.repository.seed_verified_memory(PATIENT_ID, memory)
+
+    retrieved = harness.repository.search_verified_memories(
+        PATIENT_ID, ["tomorrow"]
+    )
+
+    assert retrieved[0].language == "en"
+    assert retrieved[0].context == {"topic": "planning"}
 
 
 def test_rejected_candidate_cannot_enter_gold_memory() -> None:

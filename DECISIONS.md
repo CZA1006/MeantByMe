@@ -101,6 +101,8 @@ CREATE TABLE memories (
     verification_level TEXT NOT NULL
         CHECK (verification_level IN ('gold','silver','unverified')),
     text TEXT,
+    language TEXT,
+    context TEXT,                  -- JSON string
     usage_count INTEGER NOT NULL DEFAULT 0,
     last_used_at TEXT,
     confirmation_session_id TEXT,
@@ -230,7 +232,7 @@ class ConfirmationMethod(StrEnum):
 
 ---
 
-# Agent / Runtime 设计决策(D10–D16)
+# Agent / Runtime 设计决策(D10–D17)
 
 以下为 runtime 行为的确定性设计,由 **Nick**(agent/runtime owner)于 2026-07-23 确认冻结。来源为设计对齐讨论,非文档冲突。所有决策均不得违反 D1–D9 与安全不变量。
 
@@ -315,6 +317,22 @@ class ConfirmedContext(BaseModel):
 
 **影响:** `core/runtime` FINAL_REVIEW、`core/policies/risk.py`、`tests/safety`(高风险严格确认)。
 
+## D17 — Gold 在候选排序中严格高于 Silver 🔴
+
+**决定:** 所有 Memory 排序信号按 verification level 加权。Gold 使用完整权重;Silver 及其他非 Gold verified memory 使用严格更小的权重:
+
+| 排序信号 | Gold | Silver |
+|----------|-----:|-------:|
+| `normalize(text)` 精确匹配 | +1000 | +250 |
+| `memory_support_ids` 命中 | +100 | +40 |
+| `similarity_band == "high"` | +25 | +8 |
+
+排序理由必须标明来源级别,例如 `exact gold patient phrase` 与 `exact silver-assisted phrase`。分数仅用于排序,不得触发候选选择或跳过确认(D14)。
+
+**理由:** Silver 是辅助或间接验证的信息,不得在相同文本关系下等于或超过患者明确确认的 Gold。
+
+**影响:** `core/personalization/ranker.py`、Memory Trace、`tests/safety`。
+
 ---
 
 ## 决策汇总
@@ -337,8 +355,9 @@ class ConfirmedContext(BaseModel):
 | D14 | Ranker 不自动选(断言) | 🔴 | Nick | ✅ 已冻结 |
 | D15 | 两层 consent 模型 | 🔴 | Nick | ✅ 已冻结 |
 | D16 | 高风险 strict 标志 | 🔴 | Nick | ✅ 已冻结 |
+| D17 | Gold 排序严格高于 Silver | 🔴 | Nick | ✅ 已冻结 |
 
-**开工前必须确认的阻塞项:** D1、D2、D4、D5(D3 的 schema 部分),及 agent/runtime 的 D10–D16。全部已冻结。
+**开工前必须确认的阻塞项:** D1、D2、D4、D5(D3 的 schema 部分),及 agent/runtime 的 D10–D17。全部已冻结。
 
 ---
 
@@ -349,3 +368,4 @@ class ConfirmedContext(BaseModel):
 | 2026-07-23 | D1–D9 | 初次提出 | 初始 onboarding review |
 | 2026-07-23 | D1–D9 | 全部确认冻结 | 决策负责人确认 |
 | 2026-07-23 | D10–D16 | 新增 agent/runtime 设计决策并冻结 | Nick 确认 |
+| 2026-07-23 | D17 | Gold/Silver 排序权重与 Memory 来源追踪规则冻结 | Nick 确认 |
