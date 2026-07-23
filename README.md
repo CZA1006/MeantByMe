@@ -66,19 +66,45 @@ The team develops with Claude Code and Codex on:
 
 Heavy models are cloud- or remote-GPU-first. The Mac application owns interaction, state, memory, authorization, trace, and fallback behavior.
 
-## Milestone 1 mock runtime
+## Implementation status
 
-Milestone 1 is a headless, deterministic vertical slice. It uses fixture ASR,
-verified SQLite memory, deterministic candidates, cached TTS, and no network.
+- **Milestone 1 — deterministic mock runtime (done).** Headless vertical slice:
+  fixture ASR, verified SQLite memory, deterministic candidates, cached TTS, no
+  network. Full state machine + policies + Expression Receipt + memory writeback,
+  with the safety invariants (D1–D17) enforced by types, DB constraints, and tests.
+- **Milestone 2 — real cloud stack via a self-hosted gateway (done, verified live).**
+  A local FastAPI gateway runs the whole probabilistic layer on StepFun **Step Plan**
+  free credit: ASR (`stepaudio-2.5-asr`, SSE), intent + completion (`step-explore`),
+  neutral/personal TTS (`stepaudio-2.5-tts`). Situational context is threaded into
+  candidate generation for memory-based disambiguation. `core/` stays provider- and
+  platform-independent; secrets live only in a git-ignored `.env`.
+- **Deferred to backend track (Jiayi):** iFLYBUDS Air 2 / viaim earbud capture and
+  private playback. The software core runs on microphone or WAV-file input and is
+  hardware-independent.
+
+See [docs/STATUS.md](docs/STATUS.md) for the full done / not-done breakdown.
+
+## Running
 
 ```bash
+# install
 ./.venv/bin/python -m pip install -e '.[test]'
-./.venv/bin/python -m meantbyme --mode mock
+
+# tests (mock/stub only — no network, no credits)
 ./.venv/bin/python -m pytest
+
+# deterministic mock golden path (headless, no network)
+./.venv/bin/python -m meantbyme --mode mock
+
+# real cloud path (needs a local .env with StepFun Step Plan key; free credit)
+./.venv/bin/python -m services.gateway            # start the gateway (localhost:8000)
+./.venv/bin/python -m meantbyme --mode cloud \
+    --audio path/to/speech.wav \
+    --situation "A friend asked if he wants to go out tomorrow. Tomorrow is Sunday."
 ```
 
-The mock command prints a structured event trace and exits successfully only
-when the session reaches `completed`.
+Modes: `mock` (deterministic fixtures), `cloud` (gateway-backed StepFun), `fallback`
+(degraded/local). Every mode ends at `completed` with **Unauthorized Voice Rate = 0**.
 
 ## Documentation
 
@@ -96,3 +122,11 @@ when the session reaches `completed`.
 - [Research references](docs/12_RESEARCH_REFERENCES.md)
 - [API schemas](docs/13_API_SCHEMAS.md)
 - [Repository structure](docs/14_REPO_STRUCTURE.md)
+
+### Working documents
+
+- [Frozen decisions D1–D17](DECISIONS.md) — the single source of truth for architecture/behavior decisions
+- [Project status (done / not done)](docs/STATUS.md)
+- [Model backend plan (sponsor coverage + billing)](docs/MODEL_BACKEND_PLAN.md)
+- [Milestone 1 brief](docs/CODEX_IMPLEMENTATION_BRIEF.md) · [Milestone 2 brief](docs/CODEX_M2_BRIEF.md) · [Step Plan gateway spec](docs/CODEX_GATEWAY_STEPPLAN_SPEC.md)
+- [Evaluation harness spec](docs/EVAL_HARNESS.md)
