@@ -310,7 +310,9 @@ def _wav_to_pcm(wav_bytes: bytes) -> bytes:
 
 
 def _parse_asr_sse(response: ProviderResponse) -> str:
-    if response.content_type != "text/event-stream":
+    # StepFun's Step Plan ASR streams SSE with Content-Type text/plain (not
+    # text/event-stream); accept both and parse the `data:` lines regardless.
+    if response.content_type not in ("text/event-stream", "text/plain"):
         raise ProviderContractError("ASR response is not an SSE stream")
     deltas: list[str] = []
     completed: str | None = None

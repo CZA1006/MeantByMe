@@ -65,7 +65,8 @@ def _sse_response(transcript: str = " hello") -> ProviderResponse:
     return ProviderResponse(
         status_code=200,
         body=asr_sse_bytes(transcript),
-        content_type="text/event-stream",
+        # StepFun returns the ASR SSE stream as text/plain (verified live).
+        content_type="text/plain",
     )
 
 
