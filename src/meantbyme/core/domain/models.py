@@ -267,6 +267,8 @@ class RuntimeEvent(DomainModel):
 class TTSResult(DomainModel):
     status: Literal["success", "failed"]
     audio_path: str | None = None
+    audio_bytes: bytes | None = None
+    media_type: str | None = None
     error: str | None = None
 
 

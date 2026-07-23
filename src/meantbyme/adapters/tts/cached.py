@@ -1,3 +1,5 @@
+import base64
+import json
 from pathlib import Path
 
 from meantbyme.core.domain import (
@@ -28,11 +30,7 @@ class CachedTTSAdapter:
     ) -> TTSResult:
         if self._fail_neutral:
             return TTSResult(status="failed", error="simulated neutral TTS failure")
-        if not self._neutral_audio_path.is_file():
-            return TTSResult(status="failed", error="neutral cache missing")
-        return TTSResult(
-            status="success", audio_path=str(self._neutral_audio_path)
-        )
+        return self._read_cache(self._neutral_audio_path, "neutral")
 
     def synthesize_personal(
         self, expression: AuthorizedExpression
@@ -54,9 +52,31 @@ class CachedTTSAdapter:
             return TTSResult(
                 status="failed", error="simulated personal TTS failure"
             )
-        if not self._personal_audio_path.is_file():
-            return TTSResult(status="failed", error="personal cache missing")
+        result = self._read_cache(self._personal_audio_path, "personal")
+        if result.status == "failed":
+            return result
         self._consumed_authorizations.add(authorization_key)
+        return result
+
+    @staticmethod
+    def _read_cache(path: Path, voice: str) -> TTSResult:
+        if not path.is_file():
+            return TTSResult(status="failed", error=f"{voice} cache missing")
+        try:
+            payload = json.loads(path.read_text(encoding="ascii"))
+            audio_bytes = base64.b64decode(payload["data"], validate=True)
+        except (KeyError, ValueError, json.JSONDecodeError) as error:
+            return TTSResult(
+                status="failed",
+                error=f"invalid {voice} audio cache: {type(error).__name__}",
+            )
+        if not audio_bytes.startswith(b"RIFF"):
+            return TTSResult(
+                status="failed", error=f"invalid {voice} WAV cache"
+            )
         return TTSResult(
-            status="success", audio_path=str(self._personal_audio_path)
+            status="success",
+            audio_path=str(path),
+            audio_bytes=audio_bytes,
+            media_type=payload.get("media_type", "audio/wav"),
         )

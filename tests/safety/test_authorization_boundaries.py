@@ -32,6 +32,11 @@ def test_unconfirmed_candidate_cannot_speak() -> None:
 
     assert harness.tts.personal_calls == 0
     assert harness.runtime.session.voice_authorized is False
+    neutral_result = harness.tts.synthesize_neutral(
+        harness.runtime.session.candidates[0]
+    )
+    assert neutral_result.audio_bytes is not None
+    assert neutral_result.audio_bytes.startswith(b"RIFF")
     with pytest.raises(TypeError):
         harness.tts.synthesize_personal("raw candidate")  # type: ignore[arg-type]
 
