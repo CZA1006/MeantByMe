@@ -7,11 +7,13 @@ from conftest import (
     drive_to_route,
     final_confirm,
     make_harness,
+    playback_completed,
     send,
 )
 from meantbyme.adapters.intent import MockIntentAdapter
 from meantbyme.adapters.storage import SQLiteRepository
 from meantbyme.core.domain import (
+    CommandActor,
     ExpressionCandidate,
     PatientCommandType,
     RiskLevel,
@@ -111,6 +113,8 @@ def test_high_risk_expression_sets_strict_final_review() -> None:
     with pytest.raises(CommandRejected, match="strict confirmation"):
         final_confirm(harness)
     final_confirm(harness, strict=True)
+    assert harness.runtime.session.stage is SessionStage.VOICE_AUTHORIZED
+    playback_completed(harness)
     assert harness.runtime.session.stage is SessionStage.COMPLETED
 
 
@@ -205,6 +209,7 @@ def test_receipt_failure_prevents_verified_memory_write() -> None:
     harness = make_harness(with_memory=False, repository=repository)
     drive_to_final_review(harness)
     final_confirm(harness)
+    playback_completed(harness)
 
     assert harness.runtime.session.stage is SessionStage.SPOKEN
     assert harness.runtime.session.failure_status == "receipt_write_failed"
@@ -212,3 +217,56 @@ def test_receipt_failure_prevents_verified_memory_write() -> None:
     assert RuntimeEventType.EXPRESSION_RECEIPT_FAILED in {
         event.event_type for event in harness.runtime.events
     }
+
+
+def test_playback_failure_cannot_mark_spoken_or_write_memory() -> None:
+    harness = make_harness(with_memory=False)
+    drive_to_final_review(harness)
+    final_confirm(harness)
+
+    send(
+        harness.runtime,
+        PatientCommandType.PLAYBACK_FAILED,
+        payload={
+            "playback_id": "failed-playback-001",
+            "output_channel": "iphone_speaker",
+        },
+        actor=CommandActor.SYSTEM,
+    )
+
+    assert harness.runtime.session.stage is SessionStage.VOICE_AUTHORIZED
+    assert harness.runtime.session.failure_status == "playback_failed"
+    assert harness.repository.get_receipt(
+        "david_demo", harness.runtime.session.session_id
+    ) is None
+    assert harness.repository.count_memory_writes("david_demo") == 0
+    assert RuntimeEventType.EXPRESSION_SPOKEN not in {
+        event.event_type for event in harness.runtime.events
+    }
+
+
+def test_playback_callback_requires_system_actor_and_is_idempotent() -> None:
+    harness = make_harness(with_memory=False)
+    drive_to_final_review(harness)
+    final_confirm(harness)
+
+    with pytest.raises(CommandRejected, match="authenticated playback"):
+        send(
+            harness.runtime,
+            PatientCommandType.PLAYBACK_COMPLETED,
+            payload={
+                "playback_id": "device-playback-001",
+                "output_channel": "iphone_speaker",
+            },
+        )
+
+    playback_completed(harness, playback_id="device-playback-001")
+    first_event_count = len(harness.runtime.events)
+    first_memory_count = harness.repository.count_memory_writes("david_demo")
+    playback_completed(harness, playback_id="device-playback-001")
+
+    assert harness.runtime.session.stage is SessionStage.COMPLETED
+    assert len(harness.runtime.events) == first_event_count
+    assert harness.repository.count_memory_writes(
+        "david_demo"
+    ) == first_memory_count

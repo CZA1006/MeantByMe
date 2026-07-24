@@ -121,6 +121,48 @@ def test_tts_failure_does_not_mark_expression_spoken() -> None:
     }
 
 
+def test_high_risk_semantic_voice_confirmation_requires_two_evidence_records(
+) -> None:
+    harness = make_harness(with_memory=False, intent=L3Intent())
+    drive_to_final_review(harness)
+
+    # Select the L3 candidate explicitly; a single semantic "yes" cannot
+    # satisfy its additional-confirmation boundary.
+    send(harness.runtime, PatientCommandType.GO_BACK)
+    send(
+        harness.runtime,
+        PatientCommandType.SELECT_CANDIDATE,
+        payload={"candidate_id": "l3-suggestion"},
+    )
+    with pytest.raises(CommandRejected, match="two evidence records"):
+        send(
+            harness.runtime,
+            PatientCommandType.FINAL_CONFIRM,
+            payload={
+                "private_readback_completed": True,
+                "l3_confirmation": True,
+            },
+            confirmation_method=ConfirmationMethod.VOICE_SEMANTIC,
+        )
+
+    send(
+        harness.runtime,
+        PatientCommandType.FINAL_CONFIRM,
+        payload={
+            "private_readback_completed": True,
+            "l3_confirmation": True,
+            "voice_confirmation_evidence": {
+                "first_prompt_id": "prompt-one",
+                "second_prompt_id": "prompt-two",
+                "first_audio_hash": "audio-one",
+                "second_audio_hash": "audio-two",
+            },
+        },
+        confirmation_method=ConfirmationMethod.VOICE_SEMANTIC,
+    )
+    assert harness.runtime.session.stage is SessionStage.VOICE_AUTHORIZED
+
+
 def test_revoked_long_term_consent_blocks_personal_voice() -> None:
     harness = make_harness()
     drive_to_final_review(harness)

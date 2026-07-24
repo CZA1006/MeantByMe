@@ -8,6 +8,7 @@ from uuid import uuid4
 from meantbyme.core.domain import (
     AuthorizedExpression,
     CommandActor,
+    ConfirmationMethod,
     ConfirmedContext,
     ExpressionCandidate,
     ExpressionReceipt,
@@ -132,6 +133,10 @@ class MeantByMeRuntime:
                 self._handle_none_of_these(command)
             elif command.command is PatientCommandType.FINAL_CONFIRM:
                 self._handle_final_confirm(command)
+            elif command.command is PatientCommandType.PLAYBACK_COMPLETED:
+                self._handle_playback_completed(command)
+            elif command.command is PatientCommandType.PLAYBACK_FAILED:
+                self._handle_playback_failed(command)
             elif command.command is PatientCommandType.EDIT_COMPLETION:
                 self._handle_edit_completion(command)
             elif command.command is PatientCommandType.GO_BACK:
@@ -504,6 +509,12 @@ class MeantByMeRuntime:
             raise CommandRejected(
                 "L3 suggestion requires an additional explicit confirmation"
             )
+        if (
+            command.confirmation_method
+            is ConfirmationMethod.VOICE_SEMANTIC
+            and (strict or candidate.source_level == "L3")
+        ):
+            self._require_distinct_voice_confirmation_evidence(command)
 
         self._move(
             SessionStage.PATIENT_CONFIRMED,
@@ -574,12 +585,84 @@ class MeantByMeRuntime:
             )
             return
 
-        self._move(SessionStage.SPOKEN)
+        # Synthesis only makes authorized audio available. The expression is
+        # not spoken until the output device reports successful completion.
+        self._replace(failure_status=None)
+
+    def _handle_playback_completed(self, command: PatientCommand) -> None:
+        self._require_system(command)
+        playback_id = self._playback_id(command)
+        if self.session.stage in {
+            SessionStage.SPOKEN,
+            SessionStage.MEMORY_UPDATED,
+            SessionStage.COMPLETED,
+        }:
+            if self.session.playback_id == playback_id:
+                return
+            raise CommandRejected(
+                "A different playback already completed this expression"
+            )
+        self._require_stage(SessionStage.VOICE_AUTHORIZED)
+        if self.session.failure_status == "personal_tts_failed":
+            raise CommandRejected("Personal TTS did not produce playable audio")
+        if (
+            not self.session.voice_authorized
+            or self.session.authorized_expression is None
+        ):
+            raise CommandRejected("Expression is not authorized for playback")
+        output_channel = command.payload.get("output_channel")
+        if output_channel not in {"iphone_speaker", "browser_speaker"}:
+            raise CommandRejected(
+                "Playback completion requires a supported public output"
+            )
+        candidate = self.session.selected_candidate()
+        if candidate is None:
+            raise CommandRejected("Playback has no selected candidate")
+        completed_at = self._now()
+        self._move(
+            SessionStage.SPOKEN,
+            playback_id=playback_id,
+            playback_completed_at=completed_at,
+            playback_output_channel=output_channel,
+            failure_status=None,
+        )
+        self._emit(
+            RuntimeEventType.PLAYBACK_COMPLETED,
+            {
+                "playback_id": playback_id,
+                "output_channel": output_channel,
+            },
+        )
         self._emit(
             RuntimeEventType.EXPRESSION_SPOKEN,
-            {"output_channel": "cached_personal_tts"},
+            {
+                "playback_id": playback_id,
+                "output_channel": output_channel,
+            },
         )
         self._create_receipt_then_write_memory(candidate)
+
+    def _handle_playback_failed(self, command: PatientCommand) -> None:
+        self._require_system(command)
+        self._require_stage(SessionStage.VOICE_AUTHORIZED)
+        playback_id = self._playback_id(command)
+        output_channel = command.payload.get("output_channel")
+        if output_channel not in {"iphone_speaker", "browser_speaker"}:
+            raise CommandRejected(
+                "Playback failure requires a supported public output"
+            )
+        self._replace(
+            playback_id=playback_id,
+            playback_output_channel=output_channel,
+            failure_status="playback_failed",
+        )
+        self._emit(
+            RuntimeEventType.PLAYBACK_FAILED,
+            {
+                "playback_id": playback_id,
+                "output_channel": output_channel,
+            },
+        )
 
     def _handle_edit_completion(self, command: PatientCommand) -> None:
         self._require_patient(command)
@@ -702,7 +785,13 @@ class MeantByMeRuntime:
         self, candidate: ExpressionCandidate
     ) -> None:
         method = self.session.confirmation_method
-        if method is None or self.session.audio_input_hash is None:
+        if (
+            method is None
+            or self.session.audio_input_hash is None
+            or self.session.playback_id is None
+            or self.session.playback_completed_at is None
+            or self.session.playback_output_channel is None
+        ):
             raise RuntimeError("Confirmed expression lacks receipt evidence")
         receipt = ExpressionReceipt(
             receipt_id=f"receipt-{self.session.session_id}",
@@ -717,7 +806,9 @@ class MeantByMeRuntime:
             confirmation_method=method,
             voice_profile_id=self.session.voice_profile_id,
             authorization_scope="this_expression",
-            output_channel="cached_personal_tts",
+            output_channel=self.session.playback_output_channel,
+            playback_id=self.session.playback_id,
+            playback_completed_at=self.session.playback_completed_at,
             audio_input_hash=self.session.audio_input_hash,
             final_text_hash=expression_hash(candidate.text),
             created_at=datetime.now(UTC),
@@ -816,6 +907,54 @@ class MeantByMeRuntime:
                 "Only an explicit patient command may make this decision"
             )
 
+    @staticmethod
+    def _require_system(command: PatientCommand) -> None:
+        if command.actor is not CommandActor.SYSTEM:
+            raise CommandRejected(
+                "Only an authenticated playback callback may report output"
+            )
+
+    @staticmethod
+    def _playback_id(command: PatientCommand) -> str:
+        playback_id = command.payload.get("playback_id")
+        if not isinstance(playback_id, str) or not playback_id.strip():
+            raise CommandRejected("Playback callback requires playback_id")
+        if len(playback_id) > 128:
+            raise CommandRejected("playback_id is too long")
+        return playback_id
+
+    @staticmethod
+    def _require_distinct_voice_confirmation_evidence(
+        command: PatientCommand,
+    ) -> None:
+        evidence = command.payload.get("voice_confirmation_evidence")
+        if not isinstance(evidence, dict):
+            raise CommandRejected(
+                "High-risk voice confirmation requires two evidence records"
+            )
+        fields = (
+            "first_prompt_id",
+            "second_prompt_id",
+            "first_audio_hash",
+            "second_audio_hash",
+        )
+        if any(
+            not isinstance(evidence.get(field), str)
+            or not evidence[field].strip()
+            for field in fields
+        ):
+            raise CommandRejected(
+                "Voice confirmation evidence is incomplete"
+            )
+        if evidence["first_prompt_id"] == evidence["second_prompt_id"]:
+            raise CommandRejected(
+                "Voice confirmations require distinct prompts"
+            )
+        if evidence["first_audio_hash"] == evidence["second_audio_hash"]:
+            raise CommandRejected(
+                "Voice confirmations require distinct audio evidence"
+            )
+
     def _require_evidence(self):
         if self.session.evidence is None:
             raise RuntimeError("Session has no transcript evidence")
@@ -867,6 +1006,10 @@ class MeantByMeRuntime:
                 PatientCommandType.EDIT_COMPLETION,
                 PatientCommandType.NONE_OF_THESE,
                 PatientCommandType.GO_BACK,
+            ],
+            SessionStage.VOICE_AUTHORIZED: [
+                PatientCommandType.PLAYBACK_COMPLETED,
+                PatientCommandType.PLAYBACK_FAILED,
             ],
         }
         actions = list(stage_actions.get(self.session.stage, []))

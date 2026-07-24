@@ -68,6 +68,12 @@ class TTSRequest(GatewayModel):
     session_id: str | None = None
 
 
+class CommandInterpretRequest(GatewayModel):
+    transcript: str = Field(min_length=1, max_length=120)
+    stage: str = Field(min_length=1, max_length=64)
+    language: str | None = Field(default=None, max_length=12)
+
+
 def create_app(
     *,
     settings: GatewaySettings | None = None,
@@ -195,6 +201,20 @@ def create_app(
         return await run_provider(
             active_providers.propose_intent,
             payload.model_dump(mode="json"),
+        )
+
+    @application.post(
+        "/v1/commands/interpret",
+        dependencies=[Depends(require_caller)],
+    )
+    async def command_interpret(
+        payload: CommandInterpretRequest,
+    ) -> dict[str, Any]:
+        return await run_provider(
+            active_providers.interpret_command,
+            transcript=payload.transcript,
+            stage=payload.stage,
+            language=payload.language,
         )
 
     @application.post(

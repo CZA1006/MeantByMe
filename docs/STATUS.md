@@ -1,7 +1,7 @@
 # Project Status — done / not done
 
 Living progress tracker. Legend: ✅ done · 🟡 partial · ⬜ not started · ⏸️ deferred.
-Last updated: 2026-07-24. Branch of record: `develop` (= `nick/runtime`).
+Last updated: 2026-07-25. Active implementation branch: `feature/earPhones`.
 
 ## Infrastructure & process
 - ✅ Git repo + remote + branch model (`main` / `develop` / `nick/runtime` / `jiayi/backend` / `an/frontend`)
@@ -72,11 +72,14 @@ Last updated: 2026-07-24. Branch of record: `develop` (= `nick/runtime`).
 - ✅ Web Demo deployed as a second Zeabur service at `meantbyme-demo.zeabur.app`
 - ✅ Structured simulated profile bundles, no-profile control, process-local
   Markdown upload, relevant Context-Memory Top-5, and same-audio A/B rerun (D20)
-- ⏸️ iFLYBUDS Air 2 / viaim earbud capture + private playback
+- 🟡 Viaim iOS 15 client implemented: SDK connection, 16 kHz PCM + primary
+  text evidence, natural voice-command interpretation, earbud-only private
+  readback, iPhone-speaker public output, playback receipt, and safe hardware
+  interruption handling. Awaiting signed arm64 iPhone + entitlement test.
 - ⬜ Remote persistence / backup, production reliability
 
 ## Evaluation & testing
-- ✅ pytest: **120 passing** (unit / safety / integration / gateway / web demo / eval); mock+fallback golden paths green, UAR 0
+- ✅ pytest: **131 passing** (unit / safety / integration / gateway / web demo / eval); mock+fallback golden paths green, UAR 0
 - ✅ **Live public deployment verified (2026-07-24):** gateway `meantbyme.zeabur.app` (health 200, auth-gated — no/wrong token → 401, correct token → real `step-explore` candidates with situation+memory disambiguation) and web demo `meantbyme-demo.zeabur.app` (cloud mode, access-gated — session create without `WEB_DEMO_TOKEN` → 401)
 - ✅ Eval harness **spec** ([EVAL_HARNESS.md](EVAL_HARNESS.md)) + **implementation** (`src/meantbyme/eval`) with `mock` / `replay` / `cloud` modes, hard gates, high-risk redaction
 - ✅ 26-sample EN/ZH dataset with paired situational samples (`demo/eval/dataset.jsonl`)

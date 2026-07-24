@@ -33,6 +33,9 @@ build/
 dist/
 *.egg-info/
 *.app
+ios/MeantByMeHeadset/Vendor/
+ios/MeantByMeHeadset/Config/Secrets.xcconfig
+ios/MeantByMeHeadset/MeantByMeHeadset.xcodeproj/
 
 # Raw patient audio must never be committed (see docs/08_SECURITY_AND_CONSENT.md).
 demo/audio/*

@@ -78,9 +78,12 @@ Heavy models are cloud- or remote-GPU-first. The Mac application owns interactio
   neutral/personal TTS (`stepaudio-2.5-tts`). Situational context is threaded into
   candidate generation for memory-based disambiguation. `core/` stays provider- and
   platform-independent; secrets live only in a git-ignored `.env`.
-- **Deferred to backend track (Jiayi):** iFLYBUDS Air 2 / viaim earbud capture and
-  private playback. The software core runs on microphone or WAV-file input and is
-  hardware-independent.
+- **Viaim iOS hardware track (implemented, awaiting signed-device test).**
+  The native iOS 15 client uses the supplied Viaim SDK for 16 kHz PCM and
+  primary text, performs private readback only on an active earbud route, and
+  reuses the Web Demo BFF/Runtime/Gateway flow. Command audio is independently
+  transcribed server-side and the constrained model may return only a command
+  intent; it cannot authorize voice.
 
 See [docs/STATUS.md](docs/STATUS.md) for the full done / not-done breakdown.
 
@@ -114,6 +117,11 @@ The browser demo is a server-side Runtime facade, not a static client that calls
 the model gateway directly. See
 [services/web_demo/README.md](services/web_demo/README.md) for its security
 boundary and Zeabur deployment.
+
+The native headset client is under
+[ios/MeantByMeHeadset](ios/MeantByMeHeadset/README.md). Its backend protocol and
+deployment boundary are documented in
+[docs/VIAIM_IOS_INTEGRATION.md](docs/VIAIM_IOS_INTEGRATION.md).
 
 ## Documentation
 

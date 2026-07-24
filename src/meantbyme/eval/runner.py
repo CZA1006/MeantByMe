@@ -80,6 +80,7 @@ def _command(
     *,
     payload: dict[str, Any] | None = None,
     confirmation_method: ConfirmationMethod | None = None,
+    actor: CommandActor = CommandActor.PATIENT,
 ) -> None:
     runtime.handle(
         PatientCommand(
@@ -87,7 +88,7 @@ def _command(
             session_id=runtime.session.session_id,
             payload=payload or {},
             confirmation_method=confirmation_method,
-            actor=CommandActor.PATIENT,
+            actor=actor,
         )
     )
 
@@ -323,6 +324,21 @@ def _run_profile(
                         payload=payload,
                         confirmation_method=ConfirmationMethod.LARGE_BUTTON,
                     )
+                    if (
+                        runtime.session.stage is SessionStage.VOICE_AUTHORIZED
+                        and runtime.session.failure_status is None
+                    ):
+                        _command(
+                            runtime,
+                            PatientCommandType.PLAYBACK_COMPLETED,
+                            payload={
+                                "playback_id": (
+                                    f"eval-{runtime.session.session_id}"
+                                ),
+                                "output_channel": "browser_speaker",
+                            },
+                            actor=CommandActor.SYSTEM,
+                        )
 
             session = runtime.session
             events = runtime.events

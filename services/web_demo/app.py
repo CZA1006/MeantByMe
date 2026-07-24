@@ -1,12 +1,21 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import hmac
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
+from fastapi import (
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+)
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
@@ -14,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from meantbyme.adapters.audio import AudioStore, AudioStoreError
 from meantbyme.adapters.profile import ProfileBundleError
 from meantbyme.core.domain import (
+    CommandActor,
     ConfirmationMethod,
     PatientCommand,
     PatientCommandType,
@@ -107,6 +117,7 @@ def create_app(
             "gateway_configured": bool(active_settings.gateway_token),
             "demo_access_configured": bool(active_settings.demo_token),
             "max_audio_seconds": active_settings.max_audio_seconds,
+            "viaim_earbud_api": True,
         }
 
     @application.post(
@@ -169,6 +180,10 @@ def create_app(
     )
     async def upload_audio(
         request: Request,
+        primary_transcript_b64: str | None = Header(
+            default=None,
+            alias="X-Viaim-Primary-Transcript-B64",
+        ),
         session: DemoSession = Depends(resolve_session),
     ) -> dict[str, Any]:
         content_type = request.headers.get("content-type", "").split(";", 1)[0]
@@ -188,7 +203,16 @@ def create_app(
                         "seconds or shorter"
                     ),
                 )
-            audio_id = await asyncio.to_thread(session.put_audio, wav_bytes)
+            primary_transcript = (
+                _decode_transcript_header(primary_transcript_b64)
+                if primary_transcript_b64 is not None
+                else None
+            )
+            audio_id = await asyncio.to_thread(
+                session.put_audio,
+                wav_bytes,
+                primary_transcript=primary_transcript,
+            )
         except AudioStoreError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         return {
@@ -213,11 +237,20 @@ def create_app(
                 raise HTTPException(
                     status_code=409, detail=str(error)
                 ) from error
+        playback_commands = {
+            PatientCommandType.PLAYBACK_COMPLETED,
+            PatientCommandType.PLAYBACK_FAILED,
+        }
         patient_command = PatientCommand(
             command=payload.command,
             session_id=session.runtime.session.session_id,
             payload=command_payload,
             confirmation_method=payload.confirmation_method,
+            actor=(
+                CommandActor.SYSTEM
+                if payload.command in playback_commands
+                else CommandActor.PATIENT
+            ),
         )
         try:
             return await asyncio.to_thread(session.handle, patient_command)
@@ -227,6 +260,52 @@ def create_app(
             raise HTTPException(
                 status_code=502, detail="intent provider contract rejected"
             ) from error
+
+    @application.post(
+        "/api/sessions/{session_id}/earbud/interpret",
+        dependencies=[Depends(require_demo_access)],
+    )
+    async def interpret_earbud_command(
+        request: Request,
+        primary_transcript_b64: str = Header(
+            alias="X-Viaim-Primary-Transcript-B64"
+        ),
+        mock_secondary_transcript_b64: str | None = Header(
+            default=None,
+            alias="X-Mock-Secondary-Transcript-B64",
+        ),
+        session: DemoSession = Depends(resolve_session),
+    ) -> dict[str, Any]:
+        content_type = request.headers.get("content-type", "").split(";", 1)[0]
+        if content_type not in {"audio/wav", "audio/x-wav"}:
+            raise HTTPException(status_code=415, detail="WAV audio required")
+        wav_bytes = await request.body()
+        if not wav_bytes or len(wav_bytes) > active_settings.max_audio_bytes:
+            raise HTTPException(status_code=413, detail="invalid audio size")
+        try:
+            primary_transcript = _decode_transcript_header(
+                primary_transcript_b64
+            )
+            mock_secondary_transcript = (
+                _decode_transcript_header(mock_secondary_transcript_b64)
+                if mock_secondary_transcript_b64 is not None
+                else None
+            )
+            duration_seconds = AudioStore.duration_seconds(wav_bytes)
+            if duration_seconds > active_settings.max_audio_seconds:
+                raise HTTPException(
+                    status_code=413,
+                    detail="command audio exceeds session limit",
+                )
+            result = await asyncio.to_thread(
+                session.interpret_earbud_command,
+                wav_bytes=wav_bytes,
+                primary_transcript=primary_transcript,
+                mock_secondary_transcript=mock_secondary_transcript,
+            )
+        except AudioStoreError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return {"notice": SIMULATED_NOTICE, **result}
 
     @application.get(
         "/api/sessions/{session_id}/audio/{kind}",
@@ -256,6 +335,22 @@ def create_app(
         raise HTTPException(status_code=404, detail="audio not available")
 
     return application
+
+
+def _decode_transcript_header(encoded: str) -> str:
+    try:
+        transcript = base64.b64decode(
+            encoded, validate=True
+        ).decode("utf-8").strip()
+    except (binascii.Error, UnicodeDecodeError) as error:
+        raise HTTPException(
+            status_code=400, detail="invalid transcript evidence"
+        ) from error
+    if not transcript or len(transcript) > 120:
+        raise HTTPException(
+            status_code=400, detail="invalid transcript evidence"
+        )
+    return transcript
 
 
 app = create_app()

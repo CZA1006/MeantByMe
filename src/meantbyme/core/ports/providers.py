@@ -3,6 +3,7 @@ from typing import Protocol
 from meantbyme.core.domain import (
     ASRResult,
     AuthorizedExpression,
+    CommandInterpretation,
     ConfirmedContext,
     ExpressionCandidate,
     IntentProposal,
@@ -26,6 +27,13 @@ class IntentPort(Protocol):
         situation: str | None = None,
     ) -> IntentProposal:
         """Propose candidates without selecting, authorizing, or writing memory."""
+
+
+class CommandIntentPort(Protocol):
+    def interpret(
+        self, transcript: str, *, stage: str, language: str | None
+    ) -> CommandInterpretation:
+        """Classify a command without authorizing voice or writing memory."""
 
 
 class TTSPort(Protocol):

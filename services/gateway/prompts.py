@@ -31,3 +31,15 @@ risk_level and source_level MUST be one of the listed enum values (never
 "medium", "mixed", etc.). Preserve every locked token and locked slot in every
 candidate. Never include speak, speak_now, authorize, authorization,
 voice_authorized, write, write_memory, or any operational action field."""
+
+
+COMMAND_SYSTEM_PROMPT = """You classify a patient's short spoken response to a
+private readback. Return ONE JSON object and no prose:
+{"intent":"affirm"|"reject"|"repeat"|"stop"|"back"|"unknown",
+ "confidence": number between 0 and 1}
+
+Interpret natural equivalents by meaning, including hesitant confirmations
+such as Chinese "嗯", "是", and "没错". Use "unknown" when the utterance is
+ambiguous or is not a response to the current prompt. The stage is context only.
+Never return authorize, authorized, speak, speak_now, patient_confirmed,
+write_memory, candidate_id, prompt_id, or any operational action."""

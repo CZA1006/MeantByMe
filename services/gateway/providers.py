@@ -10,9 +10,13 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 
-from meantbyme.core.domain import IntentProposal
+from meantbyme.core.domain import (
+    CommandIntent,
+    CommandInterpretation,
+    IntentProposal,
+)
 from services.gateway.config import GatewaySettings
-from services.gateway.prompts import INTENT_SYSTEM_PROMPT
+from services.gateway.prompts import COMMAND_SYSTEM_PROMPT, INTENT_SYSTEM_PROMPT
 from services.gateway.provider_http import (
     ProviderHttpClient,
     ProviderRequestError,
@@ -142,6 +146,52 @@ class CloudProviderService:
             )
         return proposal.model_dump(mode="json")
 
+    def interpret_command(
+        self,
+        *,
+        transcript: str,
+        stage: str,
+        language: str | None,
+    ) -> dict[str, Any]:
+        user_content = json.dumps(
+            {
+                "transcript": transcript,
+                "stage": stage,
+                "language": language,
+            },
+            separators=(",", ":"),
+            ensure_ascii=False,
+        )
+        if self.settings.intent_provider == "stepfun":
+            text = self._stepfun_intent(
+                user_content, system_prompt=COMMAND_SYSTEM_PROMPT
+            )
+        else:
+            text = self._openagents_intent(
+                user_content, system_prompt=COMMAND_SYSTEM_PROMPT
+            )
+        payload = _extract_json_text(text)
+        if set(payload) - {"intent", "confidence"}:
+            raise ProviderContractError(
+                "Command response contains operational or unknown fields",
+                code="command_contract_fields_invalid",
+            )
+        try:
+            intent = CommandIntent(payload["intent"])
+            confidence = payload.get("confidence")
+            interpretation = CommandInterpretation(
+                provider=f"{self.settings.intent_provider}_command_intent",
+                transcript=transcript,
+                intent=intent,
+                confidence=confidence,
+            )
+        except (KeyError, TypeError, ValueError, ValidationError) as error:
+            raise ProviderContractError(
+                "Command response failed domain validation",
+                code="command_domain_validation_failed",
+            ) from error
+        return interpretation.model_dump(mode="json")
+
     def synthesize(
         self,
         *,
@@ -233,14 +283,19 @@ class CloudProviderService:
         except (ProviderContractError, ProviderRequestError):
             return None
 
-    def _openagents_intent(self, user_content: str) -> str:
+    def _openagents_intent(
+        self,
+        user_content: str,
+        *,
+        system_prompt: str = INTENT_SYSTEM_PROMPT,
+    ) -> str:
         self._require_secret(self.settings.openagents_api_key, "OpenAgents")
         response = self._client.post_json(
             f"{self.settings.openagents_base_url}/chat/completions",
             {
                 "model": self.settings.intent_model,
                 "messages": [
-                    {"role": "system", "content": INTENT_SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content},
                 ],
                 "temperature": 0,
@@ -262,14 +317,19 @@ class CloudProviderService:
             ) from error
         return _text_content(content)
 
-    def _stepfun_intent(self, user_content: str) -> str:
+    def _stepfun_intent(
+        self,
+        user_content: str,
+        *,
+        system_prompt: str = INTENT_SYSTEM_PROMPT,
+    ) -> str:
         self._require_secret(self.settings.stepfun_api_key, "StepFun")
         response = self._client.post_json(
             f"{self.settings.stepfun_base_url}/messages",
             {
                 "model": self.settings.intent_model,
                 "max_tokens": 2_048,
-                "system": INTENT_SYSTEM_PROMPT,
+                "system": system_prompt,
                 "messages": [{"role": "user", "content": user_content}],
             },
             headers={

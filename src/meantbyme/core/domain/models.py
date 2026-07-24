@@ -37,6 +37,16 @@ class ConfirmationMethod(StrEnum):
     SCANNING = "scanning"
     DWELL = "dwell"
     SECOND_METHOD = "second_method"
+    VOICE_SEMANTIC = "voice_semantic"
+
+
+class CommandIntent(StrEnum):
+    AFFIRM = "affirm"
+    REJECT = "reject"
+    REPEAT = "repeat"
+    STOP = "stop"
+    BACK = "back"
+    UNKNOWN = "unknown"
 
 
 class CommandActor(StrEnum):
@@ -54,6 +64,8 @@ class PatientCommandType(StrEnum):
     SELECT_CANDIDATE = "select_candidate"
     NONE_OF_THESE = "none_of_these"
     FINAL_CONFIRM = "final_confirm"
+    PLAYBACK_COMPLETED = "playback_completed"
+    PLAYBACK_FAILED = "playback_failed"
     EDIT_COMPLETION = "edit_completion"
     GO_BACK = "go_back"
     STOP = "stop"
@@ -105,6 +117,8 @@ class RuntimeEventType(StrEnum):
     VOICE_AUTHORIZATION_GRANTED = "VOICE_AUTHORIZATION_GRANTED"
     VOICE_AUTHORIZATION_BLOCKED = "VOICE_AUTHORIZATION_BLOCKED"
     TTS_FAILED = "TTS_FAILED"
+    PLAYBACK_COMPLETED = "PLAYBACK_COMPLETED"
+    PLAYBACK_FAILED = "PLAYBACK_FAILED"
     EXPRESSION_SPOKEN = "EXPRESSION_SPOKEN"
     EXPRESSION_RECEIPT_CREATED = "EXPRESSION_RECEIPT_CREATED"
     EXPRESSION_RECEIPT_FAILED = "EXPRESSION_RECEIPT_FAILED"
@@ -171,6 +185,15 @@ class IntentProposal(DomainModel):
     requires_confirmation: bool = True
 
 
+class CommandInterpretation(DomainModel):
+    provider: str
+    transcript: str
+    intent: CommandIntent
+    status: Literal["success", "failed", "timeout"] = "success"
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    error: str | None = None
+
+
 class ConfirmedContext(DomainModel):
     locked_slots: dict[str, str] = Field(default_factory=dict)
     locked_tokens: list[str] = Field(default_factory=list)
@@ -202,6 +225,8 @@ class ExpressionReceipt(DomainModel):
     voice_profile_id: str | None
     authorization_scope: Literal["this_expression"] | None
     output_channel: str
+    playback_id: str
+    playback_completed_at: datetime
     audio_input_hash: str
     final_text_hash: str
     created_at: datetime
@@ -233,6 +258,9 @@ class ExpressionSession(DomainModel):
     audio_input_hash: str | None = None
     neutral_readback_path: str | None = None
     authorized_expression: AuthorizedExpression | None = None
+    playback_id: str | None = None
+    playback_completed_at: datetime | None = None
+    playback_output_channel: str | None = None
     receipt_id: str | None = None
     failure_status: str | None = None
 

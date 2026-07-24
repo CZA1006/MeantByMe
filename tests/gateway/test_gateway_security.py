@@ -48,6 +48,18 @@ class RecordingGatewayProvider:
         self.intent_calls.append(payload)
         return {"provider": "recording"}
 
+    def interpret_command(
+        self, *, transcript: str, stage: str, language: str | None
+    ) -> dict[str, Any]:
+        return {
+            "provider": "recording",
+            "transcript": transcript,
+            "intent": "affirm",
+            "status": "success",
+            "confidence": 1,
+            "error": None,
+        }
+
 
 def _client(
     *,
@@ -80,6 +92,16 @@ def _client(
             },
         ),
         ("/v1/intent/propose", {"json": INTENT_PAYLOAD}),
+        (
+            "/v1/commands/interpret",
+            {
+                "json": {
+                    "transcript": "yes",
+                    "stage": "final_review",
+                    "language": "en",
+                }
+            },
+        ),
         (
             "/v1/tts/synthesize",
             {

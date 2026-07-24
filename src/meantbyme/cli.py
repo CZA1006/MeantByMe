@@ -16,6 +16,7 @@ from meantbyme.adapters.storage import SQLiteRepository
 from meantbyme.adapters.tts import CachedTTSAdapter, GatewayTTSAdapter
 from meantbyme.config import DesktopSettings
 from meantbyme.core.domain import (
+    CommandActor,
     ConfirmationMethod,
     MemoryItem,
     MemoryType,
@@ -45,6 +46,7 @@ def _command(
     *,
     payload: dict | None = None,
     confirmation_method: ConfirmationMethod | None = None,
+    actor: CommandActor = CommandActor.PATIENT,
 ) -> None:
     runtime.handle(
         PatientCommand(
@@ -52,6 +54,7 @@ def _command(
             session_id=runtime.session.session_id,
             payload=payload or {},
             confirmation_method=confirmation_method,
+            actor=actor,
         )
     )
 
@@ -156,6 +159,19 @@ def _drive_golden_path(
         },
         confirmation_method=ConfirmationMethod.LARGE_BUTTON,
     )
+    if (
+        runtime.session.stage is SessionStage.VOICE_AUTHORIZED
+        and runtime.session.failure_status is None
+    ):
+        _command(
+            runtime,
+            PatientCommandType.PLAYBACK_COMPLETED,
+            payload={
+                "playback_id": f"cli-{runtime.session.session_id}",
+                "output_channel": "browser_speaker",
+            },
+            actor=CommandActor.SYSTEM,
+        )
 
 
 def _result(

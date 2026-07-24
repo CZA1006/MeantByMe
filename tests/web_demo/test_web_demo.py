@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -115,6 +116,38 @@ def test_health_and_page_are_public_but_sessions_require_demo_token(
     assert wrong.status_code == 401
 
 
+def test_expression_upload_merges_viaim_primary_without_echoing_text(
+    tmp_path: Path,
+) -> None:
+    transcript = "I don't tomorrow"
+    with TestClient(create_app(settings=_settings(tmp_path))) as client:
+        created, headers = _create_session(client)
+        session_id = created["session"]["session_id"]
+        upload = client.post(
+            f"/api/sessions/{session_id}/audio",
+            headers={
+                **headers,
+                "Content-Type": "audio/wav",
+                "X-Viaim-Primary-Transcript-B64": base64.b64encode(
+                    transcript.encode("utf-8")
+                ).decode("ascii"),
+            },
+            content=wav_bytes(),
+        )
+        _command(client, session_id, headers, "start_capture")
+        heard = _command(client, session_id, headers, "stop_capture")
+
+    assert upload.status_code == 200
+    assert transcript not in upload.text
+    asr_events = [
+        event
+        for event in heard["session"]["trace_items"]
+        if event["event_type"] == RuntimeEventType.ASR_RESULT_RECEIVED
+    ]
+    assert asr_events[0]["payload"]["provider"] == "viaim_ios_primary"
+    assert transcript not in str(asr_events)
+
+
 def test_frontend_never_auto_checks_patient_confirmation() -> None:
     script = (
         Path(__file__).resolve().parents[2]
@@ -225,6 +258,49 @@ def test_audio_upload_accepts_limit_and_rejects_longer_wav(
     )
 
 
+def test_earbud_command_requires_two_matching_interpretations(
+    tmp_path: Path,
+) -> None:
+    with TestClient(create_app(settings=_settings(tmp_path))) as client:
+        created, headers = _create_session(client)
+        session_id = created["session"]["session_id"]
+        agreed = client.post(
+            f"/api/sessions/{session_id}/earbud/interpret",
+            headers={
+                **headers,
+                "Content-Type": "audio/wav",
+                "X-Viaim-Primary-Transcript-B64": base64.b64encode(
+                    b"yes"
+                ).decode("ascii"),
+                "X-Mock-Secondary-Transcript-B64": base64.b64encode(
+                    b"yes"
+                ).decode("ascii"),
+            },
+            content=wav_bytes(duration_seconds=1),
+        )
+        disagreed = client.post(
+            f"/api/sessions/{session_id}/earbud/interpret",
+            headers={
+                **headers,
+                "Content-Type": "audio/wav",
+                "X-Viaim-Primary-Transcript-B64": base64.b64encode(
+                    b"yes"
+                ).decode("ascii"),
+                "X-Mock-Secondary-Transcript-B64": base64.b64encode(
+                    b"no"
+                ).decode("ascii"),
+            },
+            content=wav_bytes(duration_seconds=1),
+        )
+
+    assert agreed.status_code == 200
+    assert agreed.json()["intent"] == "affirm"
+    assert agreed.json()["consensus"] is True
+    assert disagreed.status_code == 200
+    assert disagreed.json()["intent"] == "unknown"
+    assert disagreed.json()["consensus"] is False
+
+
 def test_cloud_mode_fails_closed_without_demo_token(tmp_path: Path) -> None:
     settings = _settings(
         tmp_path,
@@ -296,7 +372,7 @@ def test_full_mock_browser_loop_completes_with_receipt_and_audio(
         assert neutral.status_code == 200
         assert neutral.content.startswith(b"RIFF")
 
-        completed = _command(
+        authorized = _command(
             client,
             session_id,
             headers,
@@ -311,7 +387,19 @@ def test_full_mock_browser_loop_completes_with_receipt_and_audio(
             f"/api/sessions/{session_id}/audio/personal",
             headers=headers,
         )
+        completed = _command(
+            client,
+            session_id,
+            headers,
+            "playback_completed",
+            payload={
+                "playback_id": "browser-playback-001",
+                "output_channel": "browser_speaker",
+            },
+        )
 
+    assert authorized["session"]["stage"] == SessionStage.VOICE_AUTHORIZED
+    assert authorized["receipt"] is None
     assert completed["session"]["stage"] == SessionStage.COMPLETED
     assert completed["receipt"]["patient_confirmed"] is True
     assert completed["audio"]["personal_available"] is True
@@ -377,7 +465,7 @@ def test_cloud_browser_loop_uses_stub_gateway_only(
                 "select_candidate",
                 payload={"candidate_id": intended["id"]},
             )
-            completed = _command(
+            authorized = _command(
                 client,
                 session_id,
                 headers,
@@ -388,7 +476,19 @@ def test_cloud_browser_loop_uses_stub_gateway_only(
                 },
                 confirmation_method="large_button",
             )
+            completed = _command(
+                client,
+                session_id,
+                headers,
+                "playback_completed",
+                payload={
+                    "playback_id": "browser-playback-cloud-001",
+                    "output_channel": "browser_speaker",
+                },
+            )
 
+    assert authorized["session"]["stage"] == SessionStage.VOICE_AUTHORIZED
+    assert authorized["receipt"] is None
     assert completed["session"]["stage"] == SessionStage.COMPLETED
     assert completed["receipt"]["patient_confirmed"] is True
     assert state.last_intent_payload is not None

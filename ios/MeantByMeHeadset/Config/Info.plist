@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>MeantByMe</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>MeantByMeBaseURL</key>
+	<string>$(MEANTBYME_BASE_URL)</string>
+	<key>MeantByMeDemoToken</key>
+	<string>$(MEANTBYME_DEMO_TOKEN)</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>用于连接 Viaim 智能耳机并接收患者语音。</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>用于连接 Viaim 智能耳机。</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>用于采集患者主动表达和确认语音。</string>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>VIAIMAppKey</key>
+	<string>$(VIAIM_APP_KEY)</string>
+	<key>VIAIMAppSecret</key>
+	<string>$(VIAIM_APP_SECRET)</string>
+</dict>
+</plist>

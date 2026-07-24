@@ -10,6 +10,7 @@ from meantbyme.adapters.intent import MockIntentAdapter
 from meantbyme.adapters.storage import SQLiteRepository
 from meantbyme.adapters.tts import CachedTTSAdapter
 from meantbyme.core.domain import (
+    CommandActor,
     ConfirmationMethod,
     MemoryItem,
     MemoryType,
@@ -173,4 +174,21 @@ def final_confirm(
         PatientCommandType.FINAL_CONFIRM,
         payload=payload,
         confirmation_method=ConfirmationMethod.LARGE_BUTTON,
+    )
+
+
+def playback_completed(
+    harness: Harness,
+    *,
+    playback_id: str = "test-playback-001",
+    output_channel: str = "iphone_speaker",
+) -> None:
+    send(
+        harness.runtime,
+        PatientCommandType.PLAYBACK_COMPLETED,
+        payload={
+            "playback_id": playback_id,
+            "output_channel": output_channel,
+        },
+        actor=CommandActor.SYSTEM,
     )

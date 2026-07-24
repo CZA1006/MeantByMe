@@ -1,0 +1,48 @@
+name: MeantByMeHeadset
+options:
+  minimumXcodeGenVersion: 2.41.0
+  deploymentTarget:
+    iOS: "15.0"
+packages:
+  VisionHeadsetOpenSDK:
+    path: Vendor/VisionHeadsetOpenSDK
+settings:
+  base:
+    SWIFT_VERSION: 5.0
+    TARGETED_DEVICE_FAMILY: "1"
+    CODE_SIGN_STYLE: Automatic
+configs:
+  Debug: debug
+  Release: release
+targets:
+  MeantByMeHeadset:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    info:
+      path: Config/Info.plist
+      properties:
+        CFBundleDisplayName: MeantByMe
+        LSRequiresIPhoneOS: true
+        NSBluetoothAlwaysUsageDescription: 用于连接 Viaim 智能耳机并接收患者语音。
+        NSBluetoothPeripheralUsageDescription: 用于连接 Viaim 智能耳机。
+        NSMicrophoneUsageDescription: 用于采集患者主动表达和确认语音。
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        VIAIMAppKey: $(VIAIM_APP_KEY)
+        VIAIMAppSecret: $(VIAIM_APP_SECRET)
+        MeantByMeBaseURL: $(MEANTBYME_BASE_URL)
+        MeantByMeDemoToken: $(MEANTBYME_DEMO_TOKEN)
+    configFiles:
+      Debug: Config/Secrets.xcconfig
+      Release: Config/Secrets.xcconfig
+    dependencies:
+      - package: VisionHeadsetOpenSDK
+        product: VisionHeadsetOpenSDK
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: cn.meantbyme.headset
+        PRODUCT_NAME: MeantByMe
+        INFOPLIST_KEY_CFBundleDisplayName: MeantByMe

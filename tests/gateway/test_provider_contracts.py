@@ -13,7 +13,10 @@ from services.gateway.provider_http import (
     ProviderRequestError,
     ProviderResponse,
 )
-from services.gateway.providers import CloudProviderService
+from services.gateway.providers import (
+    CloudProviderService,
+    ProviderContractError,
+)
 from tests.helpers.stub_gateway import asr_sse_bytes, wav_bytes
 
 
@@ -139,6 +142,79 @@ def test_stepfun_messages_uses_anthropic_shape_without_thinking() -> None:
     user_content = json.loads(call["payload"]["messages"][0]["content"])
     assert user_content["situation"] == "A friend asked about tomorrow."
     assert result["requires_confirmation"] is True
+
+
+def test_command_interpretation_is_constrained_to_intent_only() -> None:
+    response = _json_response(
+        {
+            "content": [
+                {
+                    "type": "text",
+                    "text": json.dumps(
+                        {"intent": "affirm", "confidence": 0.94}
+                    ),
+                }
+            ]
+        }
+    )
+    client = RecordingProviderClient([response])
+    service = CloudProviderService(
+        GatewaySettings(
+            stepfun_api_key="test-key",
+            intent_provider="stepfun",
+        ),
+        client=client,
+    )
+
+    result = service.interpret_command(
+        transcript="嗯",
+        stage="final_review",
+        language="zh",
+    )
+
+    assert result == {
+        "provider": "stepfun_command_intent",
+        "transcript": "嗯",
+        "intent": "affirm",
+        "status": "success",
+        "confidence": 0.94,
+        "error": None,
+    }
+    system_prompt = client.calls[0]["payload"]["system"]
+    assert "patient_confirmed" in system_prompt
+    assert "operational action" in system_prompt
+
+
+def test_command_model_cannot_smuggle_authorization() -> None:
+    response = _json_response(
+        {
+            "content": [
+                {
+                    "type": "text",
+                    "text": json.dumps(
+                        {
+                            "intent": "affirm",
+                            "confidence": 1,
+                            "authorized": True,
+                        }
+                    ),
+                }
+            ]
+        }
+    )
+    service = CloudProviderService(
+        GatewaySettings(stepfun_api_key="test-key"),
+        client=RecordingProviderClient([response]),
+    )
+
+    with pytest.raises(
+        ProviderContractError, match="operational or unknown fields"
+    ):
+        service.interpret_command(
+            transcript="是",
+            stage="final_review",
+            language="zh",
+        )
 
 
 def test_stepfun_audio_requests_map_documented_fields() -> None:

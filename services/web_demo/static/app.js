@@ -89,6 +89,8 @@ const eventLabels = {
   VOICE_AUTHORIZATION_GRANTED: "Personal voice authorization granted",
   VOICE_AUTHORIZATION_BLOCKED: "Personal voice authorization blocked",
   TTS_FAILED: "Speech synthesis failed",
+  PLAYBACK_COMPLETED: "Output device confirmed playback",
+  PLAYBACK_FAILED: "Output device reported playback failure",
   EXPRESSION_SPOKEN: "Confirmed expression spoken",
   EXPRESSION_RECEIPT_CREATED: "Expression Receipt created",
   VERIFIED_MEMORY_WRITTEN: "Verified memory updated",
@@ -273,6 +275,7 @@ function renderDecision() {
   else if (stage === "category_clarification") renderCategory();
   else if (stage === "candidate_selection") renderCandidates();
   else if (stage === "final_review") renderFinalReview();
+  else if (stage === "voice_authorized") renderAuthorizedPlayback();
   else if (stage === "completed") renderCompleted();
   else if (stage === "stopped") renderStopped();
   else renderProcessing(stage);
@@ -573,6 +576,41 @@ function renderCompleted() {
     "click",
     () => openProfileSetup({ replay: true }),
   );
+}
+
+function renderAuthorizedPlayback() {
+  const playbackId = (
+    globalThis.crypto?.randomUUID?.()
+    || `browser-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  );
+  ui.decision.innerHTML = `
+    <span class="eyebrow">Voice authorized for this expression</span>
+    <h1 id="stage-title">Play the confirmed expression</h1>
+    <p class="lead">Receipt and verified memory are created only after this player finishes successfully.</p>
+    <div class="audio-review">
+      <strong>Authorized personal-voice output</strong>
+      <audio id="authorized-personal-audio" controls preload="auto"></audio>
+    </div>
+  `;
+  const audio = document.querySelector("#authorized-personal-audio");
+  audio.addEventListener("ended", () => sendCommand(
+    "playback_completed",
+    {
+      playback_id: playbackId,
+      output_channel: "browser_speaker",
+    },
+  ), { once: true });
+  audio.addEventListener("error", () => {
+    if (!audio.currentSrc) return;
+    sendCommand(
+      "playback_failed",
+      {
+        playback_id: playbackId,
+        output_channel: "browser_speaker",
+      },
+    );
+  }, { once: true });
+  loadAudio("personal", audio);
 }
 
 function renderStopped() {

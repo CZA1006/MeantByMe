@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import threading
@@ -9,8 +10,16 @@ from secrets import token_urlsafe
 from typing import Any
 from uuid import uuid4
 
-from meantbyme.adapters.asr import GatewayASRAdapter, MockASRAdapter
+from meantbyme.adapters.asr import (
+    GatewayASRAdapter,
+    HeadsetPrimaryASRAdapter,
+    MockASRAdapter,
+)
 from meantbyme.adapters.audio import AudioStore
+from meantbyme.adapters.command import (
+    GatewayCommandIntentAdapter,
+    MockCommandIntentAdapter,
+)
 from meantbyme.adapters.http import GatewayHttpClient
 from meantbyme.adapters.intent import GatewayIntentAdapter, MockIntentAdapter
 from meantbyme.adapters.profile import (
@@ -22,12 +31,13 @@ from meantbyme.adapters.storage import SQLiteRepository
 from meantbyme.adapters.tts import CachedTTSAdapter, GatewayTTSAdapter
 from meantbyme.core.domain import (
     AuthorizedExpression,
+    CommandIntent,
     ExpressionCandidate,
     PatientCommand,
     RuntimeEventType,
     TTSResult,
 )
-from meantbyme.core.ports import TTSPort
+from meantbyme.core.ports import ASRPort, CommandIntentPort, TTSPort
 from meantbyme.core.runtime import MeantByMeRuntime
 
 from services.web_demo.config import WebDemoSettings
@@ -66,6 +76,8 @@ class DemoSession:
     repository: SQLiteRepository
     audio_store: AudioStore
     tts: CapturingTTSAdapter
+    asr: HeadsetPrimaryASRAdapter
+    command_intent: CommandIntentPort
     mode: str
     storage_root: Path
     profile: ProfileBundle
@@ -79,7 +91,12 @@ class DemoSession:
         self.repository.close()
         shutil.rmtree(self.storage_root, ignore_errors=True)
 
-    def put_audio(self, wav_bytes: bytes) -> str:
+    def put_audio(
+        self,
+        wav_bytes: bytes,
+        *,
+        primary_transcript: str | None = None,
+    ) -> str:
         with self.lock:
             audio_id = (
                 self.fixture_audio_id
@@ -87,8 +104,99 @@ class DemoSession:
                 else f"web-audio-{uuid4().hex}"
             )
             self.audio_store.put_wav_bytes(audio_id, wav_bytes)
+            if primary_transcript:
+                self.asr.submit_primary(
+                    audio_id,
+                    primary_transcript,
+                    language=self.runtime.session.language,
+                )
             self.pending_audio_id = audio_id
             return audio_id
+
+    def interpret_earbud_command(
+        self,
+        *,
+        wav_bytes: bytes,
+        primary_transcript: str,
+        mock_secondary_transcript: str | None = None,
+    ) -> dict[str, Any]:
+        """Interpret command evidence without mutating Runtime authorization."""
+        with self.lock:
+            audio_id = f"earbud-command-{uuid4().hex}"
+            self.audio_store.put_wav_bytes(audio_id, wav_bytes)
+            try:
+                if self.mode == "mock":
+                    secondary_transcript = (
+                        mock_secondary_transcript
+                        if mock_secondary_transcript is not None
+                        else primary_transcript
+                    )
+                    secondary_provider = "mock_secondary_command_asr"
+                else:
+                    results = self.asr.transcribe(audio_id)
+                    secondary = next(
+                        (
+                            result
+                            for result in results
+                            if result.status == "success"
+                            and result.transcript.strip()
+                        ),
+                        None,
+                    )
+                    secondary_transcript = (
+                        secondary.transcript if secondary else ""
+                    )
+                    secondary_provider = (
+                        secondary.provider
+                        if secondary
+                        else "secondary_command_asr_missing"
+                    )
+            finally:
+                self.audio_store.delete(audio_id)
+
+            stage = self.runtime.session.stage.value
+            language = self.runtime.session.language
+            primary = self.command_intent.interpret(
+                primary_transcript,
+                stage=stage,
+                language=language,
+            )
+            secondary = self.command_intent.interpret(
+                secondary_transcript,
+                stage=stage,
+                language=language,
+            )
+            if CommandIntent.STOP in {primary.intent, secondary.intent}:
+                resolved = CommandIntent.STOP
+                consensus = primary.intent is secondary.intent
+            elif primary.intent is secondary.intent and primary.intent in {
+                CommandIntent.AFFIRM,
+                CommandIntent.REJECT,
+                CommandIntent.REPEAT,
+                CommandIntent.BACK,
+            }:
+                resolved = primary.intent
+                consensus = True
+            else:
+                resolved = CommandIntent.UNKNOWN
+                consensus = False
+            return {
+                "intent": resolved.value,
+                "consensus": consensus,
+                "stage": stage,
+                "audio_input_hash": hashlib.sha256(wav_bytes).hexdigest(),
+                "primary": {
+                    "provider": primary.provider,
+                    "intent": primary.intent.value,
+                    "status": primary.status,
+                },
+                "secondary": {
+                    "provider": secondary_provider,
+                    "intent_provider": secondary.provider,
+                    "intent": secondary.intent.value,
+                    "status": secondary.status,
+                },
+            }
 
     def audio_id_for_capture(self) -> str:
         if self.pending_audio_id is not None:
@@ -257,7 +365,7 @@ def _build_session(
             max_attempts=settings.gateway_max_attempts,
             token=settings.gateway_token,
         )
-        asr = GatewayASRAdapter(
+        base_asr: ASRPort = GatewayASRAdapter(
             client=client,
             audio_store=audio_store,
             patient_id=patient.patient_id,
@@ -272,15 +380,18 @@ def _build_session(
             client=client,
             audio_store=audio_store,
         )
+        command_intent: CommandIntentPort = GatewayCommandIntentAdapter(client)
     else:
         voice_profile_id = profile.voice_consent.voice_profile_id
-        asr = MockASRAdapter.from_json(fixture_path)
+        base_asr = MockASRAdapter.from_json(fixture_path)
         intent = MockIntentAdapter()
+        command_intent = MockCommandIntentAdapter()
         delegate_tts = CachedTTSAdapter(
             root / fixture["tts"]["neutral_cache"],
             root / fixture["tts"]["personal_cache"],
         )
 
+    asr = HeadsetPrimaryASRAdapter(base_asr)
     tts = CapturingTTSAdapter(delegate_tts)
     runtime = MeantByMeRuntime(
         asr=asr,
@@ -299,6 +410,8 @@ def _build_session(
         repository=repository,
         audio_store=audio_store,
         tts=tts,
+        asr=asr,
+        command_intent=command_intent,
         mode=settings.mode,
         storage_root=session_root,
         profile=profile,
