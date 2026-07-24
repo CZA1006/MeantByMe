@@ -124,7 +124,11 @@ def test_frontend_never_auto_checks_patient_confirmation() -> None:
     assert "checkbox.checked = true" not in script
     assert "GATEWAY_TOKEN" not in script
     assert "recordingAutoStopStarted" in script
-    assert "seconds >= appState.maxAudioSeconds" in script
+    assert "RECORDING_STOP_HEADROOM_SECONDS = 0.5" in script
+    assert (
+        "appState.maxAudioSeconds - RECORDING_STOP_HEADROOM_SECONDS"
+        in script
+    )
 
 
 def test_audio_upload_accepts_limit_and_rejects_longer_wav(

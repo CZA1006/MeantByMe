@@ -15,6 +15,8 @@ const ui = {
   candidateTemplate: document.querySelector("#candidate-template"),
 };
 
+const RECORDING_STOP_HEADROOM_SECONDS = 0.5;
+
 const appState = {
   demoToken: sessionStorage.getItem("meantbyme_demo_token") || "",
   sessionId: "",
@@ -689,10 +691,14 @@ function stopRecordingTimer() {
 function updateCaptureClock() {
   const target = document.querySelector("#capture-time");
   if (!target || !appState.recordingStartedAt) return;
-  const seconds = Math.floor((Date.now() - appState.recordingStartedAt) / 1000);
+  const elapsedSeconds = (Date.now() - appState.recordingStartedAt) / 1000;
+  const seconds = Math.floor(elapsedSeconds);
   target.textContent = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
   if (
-    seconds >= appState.maxAudioSeconds
+    elapsedSeconds >= Math.max(
+      0.1,
+      appState.maxAudioSeconds - RECORDING_STOP_HEADROOM_SECONDS,
+    )
     && appState.recorder
     && !appState.recordingAutoStopStarted
   ) {
