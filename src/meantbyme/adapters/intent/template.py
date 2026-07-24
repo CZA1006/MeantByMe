@@ -19,8 +19,9 @@ class TemplateIntentAdapter:
         evidence: TranscriptEvidence,
         memories: list[MemoryItem],
         confirmed_context: ConfirmedContext,
+        situation: str | None = None,
     ) -> IntentProposal:
-        del memories
+        del memories, situation
         supported = list(
             dict.fromkeys(
                 confirmed_context.locked_tokens

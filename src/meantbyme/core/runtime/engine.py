@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 from meantbyme.core.domain import (
@@ -25,6 +25,7 @@ from meantbyme.core.domain import (
     VerificationLevel,
 )
 from meantbyme.core.personalization import (
+    compose_situation,
     expression_hash,
     has_strong_verified_match,
     idempotency_key,
@@ -56,11 +57,13 @@ class MeantByMeRuntime:
         intent: IntentPort,
         tts: TTSPort,
         repository: RepositoryPort,
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._asr = asr
         self._intent = intent
         self._tts = tts
         self._repository = repository
+        self._now = clock
         self._session: ExpressionSession | None = None
         self._events: list[RuntimeEvent] = []
 
@@ -249,6 +252,41 @@ class MeantByMeRuntime:
                 RuntimeEventType.MEMORY_RETRIEVAL_FAILED,
                 {"fallback": "generic_mode", "error_type": type(error).__name__},
             )
+
+        try:
+            context_memories = self._repository.search_context_memories(
+                self.session.patient_id
+            )
+        except Exception as error:
+            context_memories = []
+            self._emit(
+                RuntimeEventType.MEMORY_RETRIEVAL_FAILED,
+                {
+                    "fallback": "no_context",
+                    "error_type": type(error).__name__,
+                },
+            )
+        situation = compose_situation(
+            context_memories,
+            now=self._now(),
+            override=self.session.situation,
+        )
+        self._replace(situation=situation)
+        self._emit(
+            RuntimeEventType.CONTEXT_RETRIEVED,
+            {
+                "count": len(context_memories),
+                "memory_ids": [
+                    memory.id for memory in context_memories
+                ],
+                "sources": [
+                    memory.context.get(
+                        "source", memory.verification_level.value
+                    )
+                    for memory in context_memories
+                ],
+            },
+        )
         self._move(SessionStage.HEARD_CONTENT_REVIEW)
 
     def _handle_confirm_heard_content(
@@ -627,6 +665,7 @@ class MeantByMeRuntime:
             evidence,
             self.session.retrieved_memories,
             self.session.confirmed_context,
+            self.session.situation,
         )
         if not proposal.requires_confirmation:
             raise ProviderContractError(

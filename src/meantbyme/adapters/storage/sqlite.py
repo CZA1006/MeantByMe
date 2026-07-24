@@ -168,6 +168,9 @@ class SQLiteRepository:
     def seed_verified_memory(
         self, patient_id: str, memory: MemoryItem
     ) -> None:
+        if memory.memory_type is MemoryType.CONTEXT:
+            self.add_context_memory(patient_id, memory)
+            return
         self._require_patient_match(patient_id, memory.patient_id)
         self._validate_gold(memory)
         existing = self._connection.execute(
@@ -215,7 +218,9 @@ class SQLiteRepository:
         rows = self._connection.execute(
             """
             SELECT * FROM memories
-            WHERE patient_id=? AND verification_level IN ('gold','silver')
+            WHERE patient_id=?
+              AND memory_type='semantic'
+              AND verification_level IN ('gold','silver')
             ORDER BY usage_count DESC, last_used_at DESC
             """,
             (patient_id,),
@@ -232,6 +237,100 @@ class SQLiteRepository:
                 similarity = "low"
             memories.append(self._row_to_memory(row, similarity))
         return memories
+
+    def add_context_memory(
+        self, patient_id: str, memory: MemoryItem
+    ) -> None:
+        self._require_patient_match(patient_id, memory.patient_id)
+        if memory.memory_type is not MemoryType.CONTEXT:
+            raise ValueError("Context repository requires memory_type=context")
+        if memory.verification_level not in {
+            VerificationLevel.GOLD,
+            VerificationLevel.SILVER,
+        }:
+            raise ValueError("Context memory must be Gold or Silver")
+        if not memory.text or not memory.text.strip():
+            raise ValueError("Context memory requires human-readable text")
+
+        source = str(memory.context.get("source", "")).casefold()
+        if (
+            source == "caregiver"
+            and memory.verification_level is not VerificationLevel.SILVER
+        ):
+            raise ValueError("Caregiver context must remain Silver")
+        if (
+            memory.verification_level is VerificationLevel.GOLD
+            and source not in {"patient", "seed"}
+        ):
+            raise ValueError(
+                "Only patient-confirmed or seed context can enter Gold memory"
+            )
+        self._validate_gold(memory)
+
+        existing = self._connection.execute(
+            """
+            SELECT patient_id, memory_type, verification_level FROM memories
+            WHERE id=?
+            """,
+            (memory.id,),
+        ).fetchone()
+        if existing:
+            self._require_patient_match(patient_id, existing["patient_id"])
+            if existing["memory_type"] != MemoryType.CONTEXT.value:
+                raise ValueError("Context memory id collides with another type")
+            if existing["verification_level"] != memory.verification_level.value:
+                raise ValueError(
+                    "Context verification level cannot change automatically"
+                )
+
+        self._connection.execute(
+            """
+            INSERT INTO memories(
+                id, patient_id, memory_type, verification_level, text,
+                language, context, usage_count, last_used_at,
+                confirmation_session_id
+            ) VALUES (?, ?, 'context', ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                text=excluded.text,
+                language=excluded.language,
+                context=excluded.context,
+                usage_count=excluded.usage_count,
+                last_used_at=excluded.last_used_at
+            """,
+            (
+                memory.id,
+                patient_id,
+                memory.verification_level.value,
+                memory.text,
+                memory.language,
+                json.dumps(memory.context, sort_keys=True),
+                memory.usage_count,
+                (
+                    memory.last_used_at.isoformat()
+                    if memory.last_used_at
+                    else None
+                ),
+                memory.confirmation_session_id,
+            ),
+        )
+        self._connection.commit()
+
+    def search_context_memories(
+        self, patient_id: str
+    ) -> list[MemoryItem]:
+        rows = self._connection.execute(
+            """
+            SELECT * FROM memories
+            WHERE patient_id=?
+              AND memory_type='context'
+              AND verification_level IN ('gold','silver')
+            ORDER BY
+              CASE verification_level WHEN 'gold' THEN 0 ELSE 1 END,
+              last_used_at DESC
+            """,
+            (patient_id,),
+        ).fetchall()
+        return [self._row_to_memory(row) for row in rows]
 
     def record_rejected_candidate(
         self, patient_id: str, candidate_id: str, text: str, session_id: str
@@ -255,6 +354,10 @@ class SQLiteRepository:
         idempotency_key: str,
     ) -> MemoryWriteResult:
         self._require_patient_match(patient_id, memory.patient_id)
+        if memory.memory_type is MemoryType.CONTEXT:
+            raise ValueError(
+                "Context memory cannot use semantic verified writeback"
+            )
         self._validate_gold(memory)
         existing_write = self._connection.execute(
             """

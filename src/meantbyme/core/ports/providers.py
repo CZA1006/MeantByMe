@@ -23,6 +23,7 @@ class IntentPort(Protocol):
         evidence: TranscriptEvidence,
         memories: list[MemoryItem],
         confirmed_context: ConfirmedContext,
+        situation: str | None = None,
     ) -> IntentProposal:
         """Propose candidates without selecting, authorizing, or writing memory."""
 

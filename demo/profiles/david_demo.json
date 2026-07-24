@@ -29,6 +29,50 @@
         },
         "confirmation_session_id": "historical-david-002"
       }
+    ],
+    "context_memories": [
+      {
+        "id": "ctx-david-doctor-sunday",
+        "text": "Sees the doctor every Sunday morning.",
+        "language": "en",
+        "verification_level": "gold",
+        "confirmations": 2,
+        "context": {
+          "kind": "routine",
+          "detail": "doctor visit",
+          "time_pattern": "weekly:sunday",
+          "source": "seed"
+        },
+        "confirmation_session_id": "simulated-context-confirmation-001"
+      },
+      {
+        "id": "ctx-david-daughter-weekends",
+        "text": "Daughter Mia visits on weekends.",
+        "language": "en",
+        "verification_level": "gold",
+        "confirmations": 2,
+        "context": {
+          "kind": "person",
+          "detail": "daughter Mia visits",
+          "time_pattern": "weekly:weekend",
+          "source": "seed"
+        },
+        "confirmation_session_id": "simulated-context-confirmation-002"
+      },
+      {
+        "id": "ctx-david-window-afternoon",
+        "text": "Prefers the living-room window open in the afternoon.",
+        "language": "en",
+        "verification_level": "silver",
+        "confirmations": 0,
+        "context": {
+          "kind": "preference",
+          "detail": "living-room window open",
+          "time_pattern": "daily:afternoon",
+          "source": "caregiver"
+        },
+        "confirmation_session_id": null
+      }
     ]
   },
   "voice_consent": {

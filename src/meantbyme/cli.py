@@ -78,6 +78,24 @@ def _seed_demo_repository(
                 confirmation_session_id=item["confirmation_session_id"],
             ),
         )
+    for item in patient.get("context_memories", []):
+        repository.add_context_memory(
+            patient["id"],
+            MemoryItem(
+                id=item["id"],
+                patient_id=patient["id"],
+                memory_type=MemoryType.CONTEXT,
+                verification_level=VerificationLevel(
+                    item["verification_level"]
+                ),
+                text=item["text"],
+                language=item["language"],
+                context=item["context"],
+                usage_count=item["confirmations"],
+                last_used_at=datetime.now(UTC),
+                confirmation_session_id=item["confirmation_session_id"],
+            ),
+        )
     repository.grant_voice_consent(
         patient["id"],
         profile["voice_consent"]["authorization_id"],

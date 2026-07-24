@@ -78,8 +78,12 @@ def test_caregiver_cannot_authorize_patient_voice() -> None:
 
 
 class NonConfirmingIntent(MockIntentAdapter):
-    def propose(self, evidence, memories, confirmed_context) -> IntentProposal:
-        proposal = super().propose(evidence, memories, confirmed_context)
+    def propose(
+        self, evidence, memories, confirmed_context, situation=None
+    ) -> IntentProposal:
+        proposal = super().propose(
+            evidence, memories, confirmed_context, situation
+        )
         return proposal.model_copy(update={"requires_confirmation": False})
 
 
@@ -133,8 +137,12 @@ def test_revoked_long_term_consent_blocks_personal_voice() -> None:
 
 
 class L3Intent(MockIntentAdapter):
-    def propose(self, evidence, memories, confirmed_context) -> IntentProposal:
-        proposal = super().propose(evidence, memories, confirmed_context)
+    def propose(
+        self, evidence, memories, confirmed_context, situation=None
+    ) -> IntentProposal:
+        proposal = super().propose(
+            evidence, memories, confirmed_context, situation
+        )
         suggestion = ExpressionCandidate(
             id="l3-suggestion",
             text="I don't want to reschedule tomorrow.",

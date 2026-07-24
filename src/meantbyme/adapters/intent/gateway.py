@@ -34,11 +34,15 @@ class GatewayIntentAdapter:
         evidence: TranscriptEvidence,
         memories: list[MemoryItem],
         confirmed_context: ConfirmedContext,
+        situation: str | None = None,
     ) -> IntentProposal:
+        effective_situation = (
+            situation if situation is not None else self._situation
+        )
         payload = {
             "patient_id": self._patient_id,
             "session_id": self._session_id,
-            "situation": self._situation,
+            "situation": effective_situation,
             "language": next(
                 (
                     result.language
@@ -71,7 +75,10 @@ class GatewayIntentAdapter:
             return proposal
         except (GatewayError, ValidationError, ValueError, TypeError):
             return self._fallback.propose(
-                evidence, memories, confirmed_context
+                evidence,
+                memories,
+                confirmed_context,
+                effective_situation,
             )
 
     @staticmethod

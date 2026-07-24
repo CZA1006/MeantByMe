@@ -363,6 +363,38 @@ band、Memory overlap 与 locked-context 语义必须和英文等价，不能因
 
 ---
 
+## D19 — Persistent Context-Memory 与自动情景召回 🔴
+
+**缺口(实测 2026-07-24):** `situation` 仅能在 session 创建时手工输入，系统
+不会持久保存或自动召回患者的日程、人物、地点、活动与偏好。现有 Memory
+writeback 与检索只有 semantic 表达，无法实现“知道患者每周日看医生”等
+持续个性化情景。
+
+**决定:**
+
+- Context-Memory 复用 `memories` 表，以 `memory_type='context'` 隔离；可读
+  描述放 `text`，`kind/detail/time_pattern/source` 等结构化字段放
+  `context` JSON，不新增表。
+- 护理者提供的 context 必须为 Silver；患者明确确认的 context 才可为
+  Gold，且仍需 `confirmation_session_id`。AI/LLM inference 禁止写 Gold，
+  Silver 不得自动升级。
+- semantic candidate support 与 context retrieval 使用独立 repository
+  方法。`search_verified_memories` 只返回 semantic；context 不得进入
+  candidate ranking、自动选择或声音授权。
+- runtime 按患者召回 context，通过纯函数 `compose_situation` 自动构造
+  session situation；手工 `--situation` 仅作为优先级更高的 override。
+- `IntentPort.propose` 显式接收 situation，runtime 负责传递，provider
+  adapter 只能将其作为证据使用。
+
+**理由:** Context 是消歧证据，不是当前意图或同意。复用现有分级、
+patient scope 与 Gold CHECK 可保持 D2/D4/D11/D14/D15/D17 的边界，同时
+让个性化跨 session 持久生效。
+
+**影响:** RepositoryPort / SQLite adapter、runtime clock 与
+`CONTEXT_RETRIEVED` trace、IntentPort 及 adapters、demo profile。
+
+---
+
 ## 决策汇总
 
 | ID | 主题 | 阻塞里程碑 1 | Owner | 状态 |
@@ -385,9 +417,10 @@ band、Memory overlap 与 locked-context 语义必须和英文等价，不能因
 | D16 | 高风险 strict 标志 | 🔴 | Nick | ✅ 已冻结 |
 | D17 | Gold 排序严格高于 Silver | 🔴 | Nick | ✅ 已冻结 |
 | D18 | CJK language-aware tokenization | 🔴 | Nick | ✅ 已冻结 |
+| D19 | Persistent Context-Memory + auto recall | 🔴 | Nick | ✅ 已冻结 |
 
 **开工前必须确认的阻塞项:** D1、D2、D4、D5(D3 的 schema 部分),及
-agent/runtime 的 D10–D18。全部已冻结。
+agent/runtime 的 D10–D19。全部已冻结。
 
 ---
 
@@ -400,3 +433,4 @@ agent/runtime 的 D10–D18。全部已冻结。
 | 2026-07-23 | D10–D16 | 新增 agent/runtime 设计决策并冻结 | Nick 确认 |
 | 2026-07-23 | D17 | Gold/Silver 排序权重与 Memory 来源追踪规则冻结 | Nick 确认 |
 | 2026-07-24 | D18 | 冻结 CJK 分词、槽位、locked-context 与 Memory overlap 等价规则 | Nick 确认 |
+| 2026-07-24 | D19 | 冻结 Context-Memory 分级存储、独立检索与自动 situation 召回 | Nick 确认 |

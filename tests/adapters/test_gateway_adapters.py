@@ -47,7 +47,8 @@ def _asr(
 
 def test_gateway_adapter_success_mapping(tmp_path: Path) -> None:
     state = StubGatewayState(secondary_available=True)
-    situation = "A friend asked about tomorrow's plan."
+    fallback_situation = "Construction-time fallback context."
+    situation = "Auto-composed patient context."
     with running_stub_gateway(state) as gateway:
         client = GatewayHttpClient(gateway.base_url, max_attempts=1)
         store = _audio_store(tmp_path)
@@ -57,8 +58,13 @@ def test_gateway_adapter_success_mapping(tmp_path: Path) -> None:
             client=client,
             patient_id=PATIENT_ID,
             session_id=SESSION_ID,
-            situation=situation,
-        ).propose(evidence, [], ConfirmedContext())
+            situation=fallback_situation,
+        ).propose(
+            evidence,
+            [],
+            ConfirmedContext(),
+            situation,
+        )
         neutral = GatewayTTSAdapter(client=client).synthesize_neutral(
             proposal.candidates[0]
         )

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from meantbyme.adapters.asr import MockASRAdapter
 from meantbyme.adapters.intent import MockIntentAdapter
@@ -44,6 +44,7 @@ def make_harness(
     session_id: str = "test-session-001",
     situation: str | None = None,
     asr_fixtures: dict[str, list[dict[str, Any]]] | None = None,
+    clock: Callable[[], datetime] | None = None,
 ) -> Harness:
     repo = repository or SQLiteRepository()
     repo.add_patient(PATIENT_ID, "David")
@@ -95,11 +96,15 @@ def make_harness(
         ROOT / "demo/audio/david_personal_final.cache",
         fail_personal=fail_personal_tts,
     )
+    runtime_options: dict[str, Any] = {}
+    if clock is not None:
+        runtime_options["clock"] = clock
     runtime = MeantByMeRuntime(
         asr=MockASRAdapter(fixtures),
         intent=intent or MockIntentAdapter(),
         tts=tts,
         repository=repo,
+        **runtime_options,
     )
     runtime.create_session(
         session_id=session_id,

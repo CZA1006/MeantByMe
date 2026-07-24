@@ -15,7 +15,9 @@ class MockIntentAdapter:
         evidence: TranscriptEvidence,
         memories: list[MemoryItem],
         confirmed_context: ConfirmedContext,
+        situation: str | None = None,
     ) -> IntentProposal:
+        del situation
         round_number = 2 if confirmed_context.rejected_texts else 1
         supported = confirmed_context.locked_tokens or evidence.stable_fragments
         memory_by_text = {

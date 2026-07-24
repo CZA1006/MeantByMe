@@ -26,13 +26,13 @@ Last updated: 2026-07-24. Branch of record: `develop` (= `nick/runtime`).
 
 ## Cloud integration — Milestone 2 (self-hosted gateway) ✅
 - ✅ FastAPI gateway (`services/gateway`) holding secrets, timeout/retry/backoff, redacted logs
-- ✅ Desktop gateway adapters (thin HTTP clients) behind the existing ports; `core/` unchanged except one optional `situation` field
+- ✅ Desktop gateway adapters (thin HTTP clients) behind provider-independent ports
 - ✅ `AudioStore` (mic / WAV file → 16 kHz mono), no earbud dependency
 - ✅ **Real StepFun Step Plan stack verified live (free ¥199 credit):**
   - ✅ ASR — `stepaudio-2.5-asr` via `/audio/asr/sse` (SSE, base64 PCM)
   - ✅ Intent + completion — `step-explore` via `/messages`
   - ✅ TTS — `stepaudio-2.5-tts` via `/audio/speech` (official voice)
-- ✅ **Situational context** threaded end-to-end → memory-based disambiguation of fragments (verified)
+- ✅ **Situational context** threaded end-to-end; persistent Context-Memory auto-recall added in D19
 - ✅ Deterministic template fallback when the LLM fails; graceful degradation
 - ✅ Stub-gateway tests for mapping + failure paths; manual `scripts/smoke_cloud.py`
 - 🟡 OpenAgents fallback wired but its demo endpoint is too slow for candidate JSON (kept as fallback only)
@@ -42,7 +42,7 @@ Last updated: 2026-07-24. Branch of record: `develop` (= `nick/runtime`).
 - ✅ Retrieval → ranking influence (Gold-match floats correct candidate to #1) — verified live
 - ✅ Writeback increments usage_count (self-evolution) — verified live (usage 2→3)
 - ✅ Rejected candidates as negative feedback, never preferences
-- 🟡 `memory.context` persisted; **situational-context capture is per-session via `--situation`** — no structured Context-Memory store yet
+- ✅ Structured Context-Memory stored per patient; Gold patient/seed context and caregiver Silver remain distinguishable
 - ⬜ Local embeddings / phonetic search (P1) — currently keyword/token overlap
 - ⬜ Acoustic phrase prototypes / voice-stage weighting (P1)
 
@@ -69,7 +69,7 @@ Last updated: 2026-07-24. Branch of record: `develop` (= `nick/runtime`).
 - ⬜ Remote persistence / backup, production reliability
 
 ## Evaluation & testing
-- ✅ pytest: **65 passing** (unit / safety / integration / gateway contracts / eval); mock+fallback golden paths green, UAR 0
+- ✅ pytest: **73 passing** (unit / safety / integration / gateway contracts / eval); mock+fallback golden paths green, UAR 0
 - ✅ Eval harness **spec** ([EVAL_HARNESS.md](EVAL_HARNESS.md)) + **implementation** (`src/meantbyme/eval`) with `mock` / `replay` / `cloud` modes, hard gates, high-risk redaction
 - ✅ 26-sample EN/ZH dataset with paired situational samples (`demo/eval/dataset.jsonl`)
 - ✅ **Live baseline (Step Plan, `step-explore`): Situation Sensitivity = 1.00 (2/2)** — identical fragments + differing `situation` each selected their own expected expression, no cross-contamination, EN and ZH
@@ -104,7 +104,7 @@ LOW without an unnecessary clarification round. `normalize()` and
 `expression_hash()` remain unchanged.
 
 ### Other
-- ⬜ Add a structured `situation`/Context-Memory capture path (not just per-run `--situation`)
+- ✅ Persistent structured Context-Memory auto-recall (D19); `--situation` remains an explicit override
 - ⬜ Ed25519 receipt signing (D3 — P0 ships unsigned)
 - ⬜ `audioop` deprecation (removed in Python 3.13) — revisit before any 3.13 upgrade
 - ⬜ Real end-to-end demo dataset + backup demo video

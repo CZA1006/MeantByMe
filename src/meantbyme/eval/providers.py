@@ -27,8 +27,9 @@ class EvaluationIntentAdapter:
         evidence: TranscriptEvidence,
         memories: list[MemoryItem],
         confirmed_context: ConfirmedContext,
+        situation: str | None = None,
     ) -> IntentProposal:
-        del evidence
+        del evidence, situation
         texts = self._candidate_texts(confirmed_context)
         candidates = [
             self._candidate(index, text, memories, confirmed_context)
@@ -189,8 +190,9 @@ class ReplayIntentAdapter:
         evidence: TranscriptEvidence,
         memories: list[MemoryItem],
         confirmed_context: ConfirmedContext,
+        situation: str | None = None,
     ) -> IntentProposal:
-        del evidence, memories, confirmed_context
+        del evidence, memories, confirmed_context, situation
         proposal = self._proposals[min(self._next, len(self._proposals) - 1)]
         self._next += 1
         return proposal.model_copy(deep=True)

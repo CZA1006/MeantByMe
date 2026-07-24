@@ -46,8 +46,12 @@ def test_go_back_reverses_only_reversible_stages() -> None:
 
 
 class HighRiskIntent(MockIntentAdapter):
-    def propose(self, evidence, memories, confirmed_context):
-        proposal = super().propose(evidence, memories, confirmed_context)
+    def propose(
+        self, evidence, memories, confirmed_context, situation=None
+    ):
+        proposal = super().propose(
+            evidence, memories, confirmed_context, situation
+        )
         high_risk = ExpressionCandidate(
             id="high-risk-candidate",
             text="I don't want to transfer money tomorrow.",
@@ -106,6 +110,36 @@ def test_memory_failure_falls_back_to_generic_mode() -> None:
     assert harness.runtime.session.retrieved_memories == []
     assert RuntimeEventType.MEMORY_RETRIEVAL_FAILED in {
         event.event_type for event in harness.runtime.events
+    }
+
+
+class FailingContextRepository(SQLiteRepository):
+    def search_context_memories(self, patient_id):
+        raise TimeoutError("simulated context timeout")
+
+
+def test_context_failure_preserves_semantic_memory_path() -> None:
+    repository = FailingContextRepository()
+    harness = make_harness(repository=repository)
+    send(harness.runtime, PatientCommandType.START_CAPTURE)
+    send(
+        harness.runtime,
+        PatientCommandType.STOP_CAPTURE,
+        payload={"audio_id": "david_fragment_001"},
+    )
+
+    assert harness.runtime.session.stage is SessionStage.HEARD_CONTENT_REVIEW
+    assert harness.runtime.session.retrieved_memories
+    assert harness.runtime.session.situation is None
+    context_event = next(
+        event
+        for event in harness.runtime.events
+        if event.event_type is RuntimeEventType.CONTEXT_RETRIEVED
+    )
+    assert context_event.payload == {
+        "count": 0,
+        "memory_ids": [],
+        "sources": [],
     }
 
 
