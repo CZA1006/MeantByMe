@@ -12,6 +12,12 @@ const ui = {
   accessForm: document.querySelector("#access-form"),
   accessCode: document.querySelector("#access-code"),
   accessError: document.querySelector("#access-error"),
+  profileButton: document.querySelector("#profile-button"),
+  profileDialog: document.querySelector("#profile-dialog"),
+  profileForm: document.querySelector("#profile-form"),
+  profileSelect: document.querySelector("#profile-select"),
+  profileInput: document.querySelector("#profile-input"),
+  profileError: document.querySelector("#profile-error"),
   candidateTemplate: document.querySelector("#candidate-template"),
 };
 
@@ -29,6 +35,11 @@ const appState = {
   maxAudioSeconds: 20,
   audioUrls: [],
   readbackCompleted: false,
+  profiles: [],
+  profileRef: "no_profile",
+  profileLanguage: "en",
+  replayAfterCreate: false,
+  lastAudioBlob: null,
 };
 
 const stageProgress = {
@@ -118,7 +129,7 @@ async function initialize() {
       ui.accessCode.focus();
       return;
     }
-    await createSession();
+    await openProfileSetup();
   } catch (error) {
     showFatal(error.message);
   }
@@ -135,13 +146,24 @@ async function createSession() {
     const response = await api("/api/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ language: "en" }),
+      body: JSON.stringify({
+        language: appState.profileLanguage,
+        profile_ref: appState.profileRef,
+      }),
     });
     const payload = await response.json();
     appState.sessionId = payload.session.session_id;
     appState.sessionToken = payload.session_token;
     delete payload.session_token;
     update(payload);
+    if (appState.replayAfterCreate && appState.lastAudioBlob) {
+      appState.replayAfterCreate = false;
+      await uploadAudio(appState.lastAudioBlob);
+      await sendCommand("start_capture");
+      if (appState.model.session.stage === "capturing") {
+        await sendCommand("stop_capture");
+      }
+    }
   } catch (error) {
     if (error.status === 401) {
       appState.demoToken = "";
@@ -153,6 +175,43 @@ async function createSession() {
     }
     showFatal(error.message);
   }
+}
+
+async function openProfileSetup({ replay = false } = {}) {
+  setBusy("Loading simulated profiles…");
+  try {
+    const response = await api("/api/profiles");
+    const payload = await response.json();
+    appState.profiles = payload.profiles;
+    appState.replayAfterCreate = replay;
+    renderProfileOptions();
+    ui.profileError.textContent = "";
+    ui.profileDialog.showModal();
+  } catch (error) {
+    if (error.status === 401) {
+      appState.demoToken = "";
+      sessionStorage.removeItem("meantbyme_demo_token");
+      ui.accessError.textContent = "That access code was not accepted.";
+      ui.accessDialog.showModal();
+      return;
+    }
+    showFatal(error.message);
+  }
+}
+
+function renderProfileOptions(extraProfile = null) {
+  const profiles = extraProfile
+    ? [...appState.profiles, extraProfile]
+    : appState.profiles;
+  ui.profileSelect.innerHTML = "";
+  profiles.forEach((profile) => {
+    const option = document.createElement("option");
+    option.value = profile.profile_ref;
+    option.textContent = profile.label;
+    option.dataset.language = profile.default_language;
+    if (profile.profile_ref === appState.profileRef) option.selected = true;
+    ui.profileSelect.append(option);
+  });
 }
 
 async function sendCommand(command, payload = {}, confirmationMethod = null) {
@@ -177,6 +236,7 @@ async function sendCommand(command, payload = {}, confirmationMethod = null) {
 }
 
 async function uploadAudio(blob) {
+  appState.lastAudioBlob = blob;
   const response = await api(`/api/sessions/${appState.sessionId}/audio`, {
     method: "POST",
     headers: { "Content-Type": "audio/wav" },
@@ -193,6 +253,7 @@ function update(payload) {
   ui.progress.style.width = `${stageProgress[stage] || 10}%`;
   ui.voice.textContent = voiceLabel(payload.session.personal_voice_status);
   ui.voice.dataset.status = payload.session.personal_voice_status;
+  ui.profileButton.textContent = payload.profile?.label || "No profile";
   renderDecision();
   renderControls();
   renderTrace();
@@ -221,7 +282,7 @@ function renderReady() {
   ui.decision.innerHTML = `
     <span class="eyebrow">New expression</span>
     <h1 id="stage-title">How would you like to speak?</h1>
-    <p class="lead">Choose an input. The system will show what it heard before proposing any expression.</p>
+    <p class="lead">Choose an input. The system will show what it heard before proposing any expression. Active profile: ${escapeHtml(appState.model.profile?.label || "No profile")}.</p>
     <div class="action-grid">
       <button id="start-microphone" class="button button-primary" type="button">Start microphone</button>
       <button id="use-demo" class="button button-secondary" type="button">Use demo fragment</button>
@@ -501,10 +562,17 @@ function renderCompleted() {
       <audio id="personal-audio" controls preload="none"></audio>
     </div>
     ${receipt ? receiptMarkup(receipt) : ""}
-    <button id="new-session" class="button button-primary" type="button">Start another expression</button>
+    <div class="action-grid">
+      <button id="new-session" class="button button-primary" type="button">Start another expression</button>
+      ${appState.lastAudioBlob ? '<button id="compare-profile" class="button button-secondary" type="button">Run same audio with another profile</button>' : ""}
+    </div>
   `;
   loadAudio("personal", document.querySelector("#personal-audio"));
-  document.querySelector("#new-session").addEventListener("click", createSession);
+  document.querySelector("#new-session").addEventListener("click", () => createSession());
+  document.querySelector("#compare-profile")?.addEventListener(
+    "click",
+    () => openProfileSetup({ replay: true }),
+  );
 }
 
 function renderStopped() {
@@ -514,7 +582,7 @@ function renderStopped() {
     <p class="lead">Stopping does not confirm a candidate or write verified memory.</p>
     <button id="new-session" class="button button-primary" type="button">Start a new session</button>
   `;
-  document.querySelector("#new-session").addEventListener("click", createSession);
+  document.querySelector("#new-session").addEventListener("click", () => createSession());
 }
 
 function renderProcessing(stage) {
@@ -725,8 +793,40 @@ ui.accessForm.addEventListener("submit", async (event) => {
   sessionStorage.setItem("meantbyme_demo_token", appState.demoToken);
   ui.accessError.textContent = "";
   ui.accessDialog.close();
+  await openProfileSetup();
+});
+
+ui.profileForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const option = ui.profileSelect.selectedOptions[0];
+  if (!option) return;
+  appState.profileRef = option.value;
+  appState.profileLanguage = option.dataset.language || "en";
+  ui.profileDialog.close();
   await createSession();
 });
+
+ui.profileInput.addEventListener("change", async (event) => {
+  const [file] = event.target.files;
+  if (!file) return;
+  ui.profileError.textContent = "";
+  try {
+    const response = await api("/api/profiles", {
+      method: "POST",
+      headers: { "Content-Type": "text/markdown" },
+      body: file,
+    });
+    const payload = await response.json();
+    renderProfileOptions(payload.profile);
+    ui.profileSelect.value = payload.profile.profile_ref;
+  } catch (error) {
+    ui.profileError.textContent = error.message;
+  } finally {
+    event.target.value = "";
+  }
+});
+
+ui.profileButton.addEventListener("click", () => openProfileSetup());
 
 class BrowserWavRecorder {
   constructor(stream, context, source, processor) {

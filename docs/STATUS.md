@@ -7,7 +7,7 @@ Last updated: 2026-07-24. Branch of record: `develop` (= `nick/runtime`).
 - ✅ Git repo + remote + branch model (`main` / `develop` / `nick/runtime` / `jiayi/backend` / `an/frontend`)
 - ✅ Python 3.11.8 `.venv` (isolated from system Anaconda)
 - ✅ `pyproject.toml`, `.gitignore`, `.env` (git-ignored) / `.env.example` (placeholders)
-- ✅ Frozen decisions **D1–D19** ([DECISIONS.md](../DECISIONS.md))
+- ✅ Frozen decisions **D1–D20** ([DECISIONS.md](../DECISIONS.md))
 - ✅ Secrets policy enforced (no keys in tracked files; verified by scans)
 
 ## Core runtime — Milestone 1 (deterministic shell) ✅
@@ -68,7 +68,9 @@ Last updated: 2026-07-24. Branch of record: `develop` (= `nick/runtime`).
 ## Backend / deploy (Jiayi's track)
 - ✅ Gateway deployed to Zeabur with caller token, rate limit, env secrets, and public health route
 - ✅ Dedicated Web Demo BFF/service entry (`Dockerfile.meantbyme-demo`)
-- ⬜ Deploy the Web Demo as a second Zeabur service and bind `meantbyme-demo.zeabur.app`
+- ✅ Web Demo deployed as a second Zeabur service at `meantbyme-demo.zeabur.app`
+- ✅ Structured simulated profile bundles, no-profile control, process-local
+  Markdown upload, relevant Context-Memory Top-5, and same-audio A/B rerun (D20)
 - ⏸️ iFLYBUDS Air 2 / viaim earbud capture + private playback
 - ⬜ Remote persistence / backup, production reliability
 

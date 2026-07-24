@@ -237,7 +237,7 @@ def test_runtime_auto_recalls_context_without_authorizing_or_ranking_it() -> Non
     )
     context = _context_memory(
         memory_id="runtime-context",
-        text="Daughter Mia visits on weekends.",
+        text="Plans tomorrow with daughter Mia.",
         level=VerificationLevel.GOLD,
         source="patient",
         confirmation_session_id="patient-context-confirmation",
@@ -248,7 +248,7 @@ def test_runtime_auto_recalls_context_without_authorizing_or_ranking_it() -> Non
 
     assert harness.runtime.session.situation == (
         "Today is Sunday 2026-07-26. Known patient context: "
-        "Daughter Mia visits on weekends."
+        "Plans tomorrow with daughter Mia."
     )
     assert intent.last_situation == harness.runtime.session.situation
     context_event = next(
@@ -274,6 +274,40 @@ def test_runtime_auto_recalls_context_without_authorizing_or_ranking_it() -> Non
     assert harness.runtime.session.selected_candidate_id is None
     assert harness.runtime.session.voice_authorized is False
     assert harness.tts.personal_calls == 0
+
+
+def test_runtime_context_retrieval_excludes_irrelevant_rows_and_limits_results() -> None:
+    harness = make_harness(with_memory=False, session_id="context-relevance")
+    relevant = [
+        _context_memory(
+            memory_id=f"relevant-{index}",
+            text=f"Tomorrow planning detail {index}.",
+            level=VerificationLevel.GOLD,
+            source="patient",
+            confirmation_session_id=f"context-confirmation-{index}",
+        )
+        for index in range(7)
+    ]
+    irrelevant = _context_memory(
+        memory_id="irrelevant-window",
+        text="Prefers the window open in the afternoon.",
+        level=VerificationLevel.SILVER,
+        source="caregiver",
+    )
+    for memory in [*relevant, irrelevant]:
+        harness.repository.add_context_memory(PATIENT_ID, memory)
+
+    drive_to_route(harness)
+
+    event = next(
+        item
+        for item in harness.runtime.events
+        if item.event_type is RuntimeEventType.CONTEXT_RETRIEVED
+    )
+    assert event.payload["count"] == 5
+    assert "irrelevant-window" not in event.payload["memory_ids"]
+    assert harness.runtime.session.situation is not None
+    assert "window open" not in harness.runtime.session.situation
 
 
 def test_demo_profile_seeds_gold_and_caregiver_silver_context() -> None:

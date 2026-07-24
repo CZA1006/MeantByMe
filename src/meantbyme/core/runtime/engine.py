@@ -255,7 +255,9 @@ class MeantByMeRuntime:
 
         try:
             context_memories = self._repository.search_context_memories(
-                self.session.patient_id
+                self.session.patient_id,
+                evidence.stable_fragments + evidence.uncertain_fragments,
+                limit=5,
             )
         except Exception as error:
             context_memories = []

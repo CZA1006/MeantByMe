@@ -33,7 +33,7 @@ def _create_session(
     response = client.post(
         "/api/sessions",
         headers={"X-Demo-Token": DEMO_TOKEN},
-        json={"language": "en"},
+        json={"language": "en", "profile_ref": "david_demo"},
     )
     assert response.status_code == 200
     payload = response.json()
@@ -129,6 +129,76 @@ def test_frontend_never_auto_checks_patient_confirmation() -> None:
         "appState.maxAudioSeconds - RECORDING_STOP_HEADROOM_SECONDS"
         in script
     )
+
+
+def test_profiles_are_protected_and_no_profile_is_a_memory_free_control(
+    tmp_path: Path,
+) -> None:
+    with TestClient(create_app(settings=_settings(tmp_path))) as client:
+        missing = client.get("/api/profiles")
+        listed = client.get(
+            "/api/profiles", headers={"X-Demo-Token": DEMO_TOKEN}
+        )
+        created = client.post(
+            "/api/sessions",
+            headers={"X-Demo-Token": DEMO_TOKEN},
+            json={"language": "en"},
+        )
+
+    assert missing.status_code == 401
+    assert [item["profile_ref"] for item in listed.json()["profiles"]] == [
+        "no_profile",
+        "lin_yue_demo",
+        "david_demo",
+    ]
+    assert created.status_code == 200
+    assert created.json()["profile"] == {
+        "profile_id": "no_profile",
+        "label": "No profile (control)",
+        "semantic_count": 0,
+        "context_count": 0,
+        "skipped_count": 0,
+    }
+
+
+def test_structured_markdown_profile_upload_is_process_local_and_selectable(
+    tmp_path: Path,
+) -> None:
+    profile = (
+        Path(__file__).resolve().parents[2]
+        / "demo/profiles/lin_yue_demo.md"
+    ).read_bytes()
+    with TestClient(create_app(settings=_settings(tmp_path))) as client:
+        uploaded = client.post(
+            "/api/profiles",
+            headers={
+                "X-Demo-Token": DEMO_TOKEN,
+                "Content-Type": "text/markdown",
+            },
+            content=profile,
+        )
+        profile_ref = uploaded.json()["profile"]["profile_ref"]
+        created = client.post(
+            "/api/sessions",
+            headers={"X-Demo-Token": DEMO_TOKEN},
+            json={"language": "en", "profile_ref": profile_ref},
+        )
+        invalid = client.post(
+            "/api/profiles",
+            headers={
+                "X-Demo-Token": DEMO_TOKEN,
+                "Content-Type": "text/markdown",
+            },
+            content=b"# Unstructured personal narrative",
+        )
+
+    assert uploaded.status_code == 200
+    assert uploaded.json()["profile"]["source"] == "uploaded"
+    assert created.status_code == 200
+    assert created.json()["profile"]["profile_id"] == "lin_yue_demo"
+    assert created.json()["profile"]["context_count"] == 6
+    assert created.json()["profile"]["skipped_count"] == 1
+    assert invalid.status_code == 422
 
 
 def test_audio_upload_accepts_limit_and_rejects_longer_wav(
@@ -322,4 +392,10 @@ def test_cloud_browser_loop_uses_stub_gateway_only(
     assert completed["session"]["stage"] == SessionStage.COMPLETED
     assert completed["receipt"]["patient_confirmed"] is True
     assert state.last_intent_payload is not None
-    assert state.last_intent_payload["situation"]
+    assert state.last_intent_payload["situation"] is None
+    context_event = next(
+        event
+        for event in completed["session"]["trace_items"]
+        if event["event_type"] == RuntimeEventType.CONTEXT_RETRIEVED
+    )
+    assert context_event["payload"]["count"] == 0

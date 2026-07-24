@@ -31,7 +31,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
   letter-spacing: 0;
 }
@@ -42,6 +43,7 @@ button {
 
 button:focus-visible,
 input:focus-visible,
+select:focus-visible,
 a:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 3px;
@@ -110,6 +112,25 @@ a:focus-visible {
   align-items: center;
   display: flex;
   gap: 10px;
+}
+
+.profile-button {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  max-width: 240px;
+  min-height: 32px;
+  overflow: hidden;
+  padding: 6px 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-button:hover {
+  background: var(--surface-soft);
 }
 
 .mode-badge,
@@ -657,12 +678,24 @@ h3 {
   margin: 24px 0 7px;
 }
 
-.access-dialog input {
+.access-dialog input,
+.access-dialog select {
   border: 1px solid var(--line);
   border-radius: 5px;
   min-height: 48px;
   padding: 10px 12px;
   width: 100%;
+}
+
+.profile-note {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 14px 0 0;
+}
+
+.access-dialog .profile-upload {
+  margin-top: 14px;
 }
 
 .access-dialog .button {
@@ -680,6 +713,14 @@ h3 {
   height: 1px;
   margin: -1px;
   overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px;
+}
+
+.access-dialog input.visually-hidden {
+  height: 1px;
+  min-height: 0;
   padding: 0;
   position: absolute;
   width: 1px;

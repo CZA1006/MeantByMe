@@ -31,7 +31,11 @@ class RepositoryPort(Protocol):
     ) -> None: ...
 
     def search_context_memories(
-        self, patient_id: str
+        self,
+        patient_id: str,
+        fragments: list[str] | None = None,
+        *,
+        limit: int | None = None,
     ) -> list[MemoryItem]: ...
 
     def record_rejected_candidate(

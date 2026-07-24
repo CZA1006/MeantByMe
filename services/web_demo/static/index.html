@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light">
     <title>MeantByMe Demo</title>
-    <link rel="stylesheet" href="/assets/styles.css">
+    <link rel="stylesheet" href="/assets/styles.css?v=profile-bundle-1">
   </head>
   <body>
     <a class="skip-link" href="#decision">Skip to current decision</a>
@@ -18,6 +18,9 @@
         </div>
       </div>
       <div class="header-status">
+        <button id="profile-button" class="profile-button" type="button" title="Choose simulated profile">
+          No profile
+        </button>
         <span id="mode-badge" class="mode-badge">MOCK</span>
         <span id="voice-status" class="voice-status">Voice blocked</span>
       </div>
@@ -72,6 +75,25 @@
       </form>
     </dialog>
 
+    <dialog id="profile-dialog" class="access-dialog profile-dialog">
+      <form id="profile-form" method="dialog">
+        <span class="eyebrow">Simulated test profile</span>
+        <h2>Choose memory context</h2>
+        <label for="profile-select">Profile</label>
+        <select id="profile-select" name="profile-select" required></select>
+        <p class="profile-note">
+          Only structured entries marked simulated are accepted. Narrative text
+          and evaluator answers are not sent to the model.
+        </p>
+        <label class="button button-secondary profile-upload" for="profile-input">
+          Upload structured Markdown
+        </label>
+        <input id="profile-input" class="visually-hidden" type="file" accept=".md,text/markdown,text/plain">
+        <p id="profile-error" class="form-error" role="alert"></p>
+        <button class="button button-primary" type="submit">Start with this profile</button>
+      </form>
+    </dialog>
+
     <template id="candidate-template">
       <article class="candidate-item">
         <button class="candidate-select" type="button">
@@ -86,6 +108,6 @@
       </article>
     </template>
 
-    <script src="/assets/app.js" defer></script>
+    <script src="/assets/app.js?v=profile-bundle-1" defer></script>
   </body>
 </html>

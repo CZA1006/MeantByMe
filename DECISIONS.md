@@ -244,6 +244,12 @@ class ConfirmationMethod(StrEnum):
 - **LOW** 若:`conflicts` 为空 **且** `missing_slots` 为空 **且** 核心槽位齐全
 - **MEDIUM:** 其余情况
 
+**2026-07-24 修订:** 单路 ASR 成功时 token 仍全部保持 uncertain，不伪装成
+stable；但若 uncertain token 至少 6 个且其中核心槽位齐全，则确定性路由为
+MEDIUM，而不是仅因 `stable_fragments` 为空强制进入类别澄清。该例外永不产生
+LOW、自动选择或跳过最终确认。少于 6 个 token、缺核心槽位或全部 ASR
+失败仍按原规则进入 HIGH。
+
 **核心槽位定义:** 谓语 + (宾语 或 时间)必须出现在 `stable_fragments` 中,否则至少 MEDIUM。
 
 **理由:** 需要可执行、可测、偏保守的路由规则;禁止伪精确概率([docs/04_AGENT_RUNTIME.md:113](docs/04_AGENT_RUNTIME.md))。
@@ -383,6 +389,9 @@ writeback 与检索只有 semantic 表达，无法实现“知道患者每周日
   candidate ranking、自动选择或声音授权。
 - runtime 按患者召回 context，通过纯函数 `compose_situation` 自动构造
   session situation；手工 `--situation` 仅作为优先级更高的 override。
+- 自动召回必须使用本轮 stable + uncertain fragments 做确定性相关性过滤，
+  默认最多返回 5 条；无 token overlap 时不把无关画像拼入 situation。直接
+  Repository 审计读取仍可不带 fragments。
 - `IntentPort.propose` 显式接收 situation，runtime 负责传递，provider
   adapter 只能将其作为证据使用。
 
@@ -392,6 +401,39 @@ patient scope 与 Gold CHECK 可保持 D2/D4/D11/D14/D15/D17 的边界，同时
 
 **影响:** RepositoryPort / SQLite adapter、runtime clock 与
 `CONTEXT_RETRIEVED` trace、IntentPort 及 adapters、demo profile。
+
+---
+
+## D20 — Simulated Profile Test Bundle 与最小披露 🔴
+
+**缺口(实测 2026-07-24):** Web Demo 固定加载 `david_demo`，任意音频都会
+携带 David 的语义和情景记忆；长篇 Markdown 用户画像同时混合患者事实、
+照护者观察、研究假设、产品需求和评测答案，无法安全地整篇作为 prompt。
+
+**决定:**
+
+- 测试画像使用 Markdown 容器，但只有唯一的 `meantbyme-profile` JSON
+  代码块可进入运行时。必须声明 `schema_version=1`、`simulated=true`、
+  patient、demo consent、voice consent，并为每条 memory 声明
+  `simulated=true`、source、verification level、sensitivity 和
+  `prompt_eligible`。
+- patient + confirmation session 才能成为 Gold；caregiver 只能是 Silver；
+  research/unverified 必须 `prompt_eligible=false`，验证后留在源包但不写入
+  可检索运行时记忆。禁止从自由叙事或 LLM 推断 Gold。
+- 画像全文、产品需求、研究说明和 evaluator expected expression 不进入
+  prompt。预期答案单独存放；把完整答案作为 Gold phrase 的测试必须明确标为
+  known-phrase recall，而不能宣称未知意图补全。
+- Web Demo 提供无画像 control、内置模拟画像和进程内临时上传。上传限制为
+  UTF-8 Markdown、64 KiB、模拟数据；cloud mode 还必须显式允许
+  `cloud_processing_allowed`。上传不落盘、不回显正文。
+- 同一音频可在不同画像下重跑用于 A/B；context 仍只是排序/消歧证据，
+  不得成为候选、选择、确认或授权。
+
+**理由:** 测试必须区分个性化带来的真实排序改善与答案泄漏；最小披露和逐条
+来源让详细健康、家庭、工作资料不会因为“画像”标签而被无差别发送给 provider。
+
+**影响:** profile adapter、Web Demo session/profile API、demo fixtures、
+context relevance retrieval、测试文档。
 
 ---
 
@@ -418,9 +460,10 @@ patient scope 与 Gold CHECK 可保持 D2/D4/D11/D14/D15/D17 的边界，同时
 | D17 | Gold 排序严格高于 Silver | 🔴 | Nick | ✅ 已冻结 |
 | D18 | CJK language-aware tokenization | 🔴 | Nick | ✅ 已冻结 |
 | D19 | Persistent Context-Memory + auto recall | 🔴 | Nick | ✅ 已冻结 |
+| D20 | Simulated Profile Test Bundle + minimum disclosure | 🔴 | Nick | ✅ 已冻结 |
 
 **开工前必须确认的阻塞项:** D1、D2、D4、D5(D3 的 schema 部分),及
-agent/runtime 的 D10–D19。全部已冻结。
+agent/runtime 的 D10–D20。全部已冻结。
 
 ---
 
@@ -435,3 +478,5 @@ agent/runtime 的 D10–D19。全部已冻结。
 | 2026-07-24 | D18 | 冻结 CJK 分词、槽位、locked-context 与 Memory overlap 等价规则 | Nick 确认 |
 | 2026-07-24 | D19 | 冻结 Context-Memory 分级存储、独立检索与自动 situation 召回 | Nick 确认 |
 | 2026-07-24 | D5/D16 | 补齐中文高风险确定性词表与 strict 确认覆盖 | Nick |
+| 2026-07-24 | D10 | 单路 ASR 内容丰富时改走 MEDIUM，tokens 仍保持 uncertain | Nick 确认 |
+| 2026-07-24 | D20 | 冻结结构化模拟画像、最小披露与有/无画像 A/B 测试规则 | Nick 确认 |

@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
 from meantbyme.adapters.audio import AudioStore, AudioStoreError
+from meantbyme.adapters.profile import ProfileBundleError
 from meantbyme.core.domain import (
     ConfirmationMethod,
     PatientCommand,
@@ -33,6 +34,7 @@ class APIModel(BaseModel):
 
 class CreateSessionRequest(APIModel):
     language: str = Field(default="en", min_length=2, max_length=12)
+    profile_ref: str = Field(default="no_profile", min_length=1, max_length=160)
 
 
 class CommandRequest(APIModel):
@@ -113,18 +115,53 @@ def create_app(
     async def create_session(
         payload: CreateSessionRequest,
     ) -> dict[str, Any]:
-        if payload.language != "en":
-            raise HTTPException(
-                status_code=400,
-                detail="The current simulated profile uses English fixtures",
-            )
         try:
-            session = await asyncio.to_thread(active_store.create)
+            session = await asyncio.to_thread(
+                active_store.create,
+                profile_ref=payload.profile_ref,
+                language=payload.language,
+            )
+        except (ProfileBundleError, ValueError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
         except RuntimeError as error:
             raise HTTPException(status_code=503, detail=str(error)) from error
         response = session.response()
         response["session_token"] = session.access_token
         return response
+
+    @application.get(
+        "/api/profiles", dependencies=[Depends(require_demo_access)]
+    )
+    async def list_profiles() -> dict[str, Any]:
+        return {
+            "notice": SIMULATED_NOTICE,
+            "profiles": active_store.list_profiles(),
+        }
+
+    @application.post(
+        "/api/profiles", dependencies=[Depends(require_demo_access)]
+    )
+    async def upload_profile(request: Request) -> dict[str, Any]:
+        content_type = request.headers.get("content-type", "").split(";", 1)[0]
+        if content_type not in {"text/markdown", "text/plain"}:
+            raise HTTPException(
+                status_code=415, detail="UTF-8 Markdown profile required"
+            )
+        body = await request.body()
+        if not body or len(body) > active_settings.max_profile_bytes:
+            raise HTTPException(status_code=413, detail="invalid profile size")
+        try:
+            markdown = body.decode("utf-8")
+            profile = await asyncio.to_thread(
+                active_store.register_profile, markdown
+            )
+        except UnicodeDecodeError as error:
+            raise HTTPException(
+                status_code=400, detail="profile must be UTF-8"
+            ) from error
+        except ProfileBundleError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return {"notice": SIMULATED_NOTICE, "profile": profile}
 
     @application.post(
         "/api/sessions/{session_id}/audio",

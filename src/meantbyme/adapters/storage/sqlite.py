@@ -17,6 +17,32 @@ from meantbyme.core.domain import (
 from meantbyme.core.personalization.text import normalize, tokenize
 
 
+_CONTEXT_STOP_TOKENS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "i",
+        "is",
+        "me",
+        "my",
+        "of",
+        "the",
+        "to",
+        "we",
+        "you",
+        "我",
+        "你",
+        "他",
+        "她",
+        "的",
+        "了",
+        "吗",
+        "不",
+    }
+)
+
+
 SCHEMA = """
 PRAGMA foreign_keys = ON;
 
@@ -323,8 +349,14 @@ class SQLiteRepository:
         self._connection.commit()
 
     def search_context_memories(
-        self, patient_id: str
+        self,
+        patient_id: str,
+        fragments: list[str] | None = None,
+        *,
+        limit: int | None = None,
     ) -> list[MemoryItem]:
+        if limit is not None and limit < 1:
+            return []
         rows = self._connection.execute(
             """
             SELECT * FROM memories
@@ -337,7 +369,47 @@ class SQLiteRepository:
             """,
             (patient_id,),
         ).fetchall()
-        return [self._row_to_memory(row) for row in rows]
+        memories = [self._row_to_memory(row) for row in rows]
+        if fragments is None:
+            return memories if limit is None else memories[:limit]
+
+        query_tokens = set(tokenize(" ".join(fragments)))
+        query_tokens -= _CONTEXT_STOP_TOKENS
+        if not query_tokens:
+            return []
+
+        scored: list[tuple[int, int, int, MemoryItem]] = []
+        for position, memory in enumerate(memories):
+            searchable_context = {
+                key: value
+                for key, value in memory.context.items()
+                if key not in {"source", "sensitivity", "prompt_eligible"}
+            }
+            searchable = " ".join(
+                [
+                    memory.text or "",
+                    json.dumps(
+                        searchable_context,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    ),
+                ]
+            )
+            memory_tokens = set(tokenize(searchable))
+            memory_tokens -= _CONTEXT_STOP_TOKENS
+            overlap = len(query_tokens & memory_tokens)
+            if overlap == 0:
+                continue
+            level_priority = (
+                1
+                if memory.verification_level is VerificationLevel.GOLD
+                else 0
+            )
+            scored.append((overlap, level_priority, -position, memory))
+
+        scored.sort(key=lambda item: item[:3], reverse=True)
+        selected = scored if limit is None else scored[:limit]
+        return [item[3] for item in selected]
 
     def record_rejected_candidate(
         self, patient_id: str, candidate_id: str, text: str, session_id: str

@@ -21,6 +21,8 @@ class WebDemoSettings:
     max_audio_bytes: int = 16 * 1024 * 1024
     max_audio_seconds: float = 20.0
     max_sessions: int = 100
+    max_profile_bytes: int = 64 * 1024
+    max_uploaded_profiles: int = 20
 
     @classmethod
     def from_env(cls) -> "WebDemoSettings":
@@ -65,5 +67,18 @@ class WebDemoSettings:
             ),
             max_sessions=max(
                 1, int(os.getenv("WEB_DEMO_MAX_SESSIONS", "100"))
+            ),
+            max_profile_bytes=max(
+                1,
+                int(
+                    os.getenv(
+                        "WEB_DEMO_MAX_PROFILE_BYTES",
+                        str(64 * 1024),
+                    )
+                ),
+            ),
+            max_uploaded_profiles=max(
+                1,
+                int(os.getenv("WEB_DEMO_MAX_UPLOADED_PROFILES", "20")),
             ),
         )

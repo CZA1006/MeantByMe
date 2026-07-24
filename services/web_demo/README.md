@@ -22,8 +22,10 @@ profile and is never accepted from a client request.
 
 This is not the production cloud-memory architecture:
 
-- every session uses the simulated `david_demo` profile;
+- every session selects a structured simulated profile or the no-profile
+  control;
 - each session has an isolated in-memory SQLite repository;
+- uploaded profile bundles remain process-local and are not written to disk;
 - audio is stored in a private temporary directory;
 - sessions and memory disappear when the process restarts;
 - a random session token scopes every session endpoint.
@@ -49,6 +51,8 @@ GATEWAY_TOKEN=the_gateway_caller_token
 GATEWAY_TIMEOUT_SECONDS=35
 WEB_DEMO_VOICE_PROFILE_ID=cixingnansheng
 WEB_DEMO_MAX_AUDIO_SECONDS=20
+WEB_DEMO_MAX_PROFILE_BYTES=65536
+WEB_DEMO_MAX_UPLOADED_PROFILES=20
 ```
 
 Then run the same module. The user enters `WEB_DEMO_TOKEN` in the browser.
@@ -73,6 +77,8 @@ GATEWAY_TIMEOUT_SECONDS=35
 GATEWAY_MAX_ATTEMPTS=2
 WEB_DEMO_VOICE_PROFILE_ID=cixingnansheng
 WEB_DEMO_MAX_AUDIO_SECONDS=20
+WEB_DEMO_MAX_PROFILE_BYTES=65536
+WEB_DEMO_MAX_UPLOADED_PROFILES=20
 ```
 
 Do not set `STEPFUN_API_KEY` on the Web Demo service. Only the existing
@@ -89,3 +95,9 @@ Cloud mode fails closed when `WEB_DEMO_TOKEN` or `GATEWAY_TOKEN` is missing.
 Microphone capture stops automatically at 20 seconds, and the BFF rejects
 longer uploaded WAV files before they can consume gateway capacity. PCM
 `WAVE_FORMAT_EXTENSIBLE` input is normalized by the local AudioStore.
+
+Profile Markdown must follow
+[`docs/PROFILE_TEST_BUNDLES.md`](../../docs/PROFILE_TEST_BUNDLES.md). Only its
+validated `meantbyme-profile` JSON block is imported. Gold, Silver, and
+unverified provenance remain distinct, and cloud mode requires explicit
+`cloud_processing_allowed`.

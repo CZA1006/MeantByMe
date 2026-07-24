@@ -168,17 +168,27 @@ def core_slots_present(stable_fragments: list[str]) -> bool:
 
 
 def assess_uncertainty(evidence: TranscriptEvidence) -> UncertaintyBand:
-    failed_count = sum(result.status != "success" for result in evidence.results)
+    successful_count = sum(
+        result.status == "success" for result in evidence.results
+    )
+    failed_count = len(evidence.results) - successful_count
     both_asr_failed = len(evidence.results) >= 2 and failed_count == len(
         evidence.results
     )
     missing_core = bool(set(evidence.missing_slots) & CORE_MISSING_SLOTS)
     core_present = core_slots_present(evidence.stable_fragments)
+    single_source_reviewable = (
+        successful_count == 1
+        and len(evidence.uncertain_fragments) >= 6
+        and core_slots_present(evidence.uncertain_fragments)
+    )
 
-    if (
-        both_asr_failed
-        or len(evidence.stable_fragments) < 2
-        or (missing_core and bool(evidence.conflicts))
+    if both_asr_failed:
+        return UncertaintyBand.HIGH
+    if single_source_reviewable:
+        return UncertaintyBand.MEDIUM
+    if len(evidence.stable_fragments) < 2 or (
+        missing_core and bool(evidence.conflicts)
     ):
         return UncertaintyBand.HIGH
     if (

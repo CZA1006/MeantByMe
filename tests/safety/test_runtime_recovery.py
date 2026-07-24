@@ -155,7 +155,10 @@ def test_memory_failure_falls_back_to_generic_mode() -> None:
 
 
 class FailingContextRepository(SQLiteRepository):
-    def search_context_memories(self, patient_id):
+    def search_context_memories(
+        self, patient_id, fragments=None, *, limit=None
+    ):
+        del patient_id, fragments, limit
         raise TimeoutError("simulated context timeout")
 
 

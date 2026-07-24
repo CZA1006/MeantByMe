@@ -44,6 +44,47 @@ def test_uncertainty_is_low_only_with_complete_core_slots() -> None:
     assert assess_uncertainty(evidence) is UncertaintyBand.LOW
 
 
+def test_content_rich_single_asr_routes_medium_without_promoting_tokens() -> None:
+    evidence = TranscriptEvidence(
+        results=[
+            _result(
+                "success",
+                "Hi we help stroke survivors communicate after confirmation",
+            )
+        ],
+        stable_fragments=[],
+        uncertain_fragments=[
+            "hi",
+            "we",
+            "help",
+            "stroke",
+            "survivors",
+            "communicate",
+            "after",
+            "confirmation",
+        ],
+        conflicts=[],
+        missing_slots=["predicate"],
+        evidence_band=UncertaintyBand.HIGH,
+    )
+
+    assert assess_uncertainty(evidence) is UncertaintyBand.MEDIUM
+    assert evidence.stable_fragments == []
+
+
+def test_sparse_single_asr_still_routes_high() -> None:
+    evidence = TranscriptEvidence(
+        results=[_result("success", "I don't tomorrow")],
+        stable_fragments=[],
+        uncertain_fragments=["i", "don't", "tomorrow"],
+        conflicts=[],
+        missing_slots=["predicate"],
+        evidence_band=UncertaintyBand.HIGH,
+    )
+
+    assert assess_uncertainty(evidence) is UncertaintyBand.HIGH
+
+
 def test_llm_hint_can_raise_but_never_lower_rule_risk() -> None:
     assert (
         classify_risk("Transfer money now", RiskLevel.ORDINARY)

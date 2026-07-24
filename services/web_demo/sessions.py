@@ -4,7 +4,6 @@ import json
 import shutil
 import threading
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from secrets import token_urlsafe
 from typing import Any
@@ -14,22 +13,25 @@ from meantbyme.adapters.asr import GatewayASRAdapter, MockASRAdapter
 from meantbyme.adapters.audio import AudioStore
 from meantbyme.adapters.http import GatewayHttpClient
 from meantbyme.adapters.intent import GatewayIntentAdapter, MockIntentAdapter
+from meantbyme.adapters.profile import (
+    ProfileBundle,
+    ProfileImportResult,
+    seed_profile_repository,
+)
 from meantbyme.adapters.storage import SQLiteRepository
 from meantbyme.adapters.tts import CachedTTSAdapter, GatewayTTSAdapter
 from meantbyme.core.domain import (
     AuthorizedExpression,
     ExpressionCandidate,
-    MemoryItem,
-    MemoryType,
     PatientCommand,
     RuntimeEventType,
     TTSResult,
-    VerificationLevel,
 )
 from meantbyme.core.ports import TTSPort
 from meantbyme.core.runtime import MeantByMeRuntime
 
 from services.web_demo.config import WebDemoSettings
+from services.web_demo.profiles import DemoProfileRegistry
 
 
 SIMULATED_NOTICE = "Simulated data. Not a clinical accuracy claim."
@@ -66,6 +68,8 @@ class DemoSession:
     tts: CapturingTTSAdapter
     mode: str
     storage_root: Path
+    profile: ProfileBundle
+    profile_import: ProfileImportResult
     access_token: str = field(default_factory=lambda: token_urlsafe(32))
     pending_audio_id: str | None = None
     fixture_audio_id: str = "david_fragment_001"
@@ -116,6 +120,15 @@ class DemoSession:
             "notice": SIMULATED_NOTICE,
             "simulated": True,
             "mode": self.mode,
+            "profile": {
+                "profile_id": self.profile.profile_id,
+                "label": self.profile.label,
+                "semantic_count": self.profile_import.semantic_count,
+                "context_count": self.profile_import.context_count,
+                "skipped_count": len(
+                    self.profile_import.skipped_memory_ids
+                ),
+            },
             "session": view_payload,
             "selected_candidate_id": session.selected_candidate_id,
             "selected_candidate": (
@@ -155,12 +168,39 @@ class DemoSessionStore:
         self._settings = settings
         self._sessions: dict[str, DemoSession] = {}
         self._lock = threading.RLock()
+        root = Path(__file__).resolve().parents[2]
+        self._profiles = DemoProfileRegistry(
+            root / "demo/profiles",
+            max_profile_bytes=settings.max_profile_bytes,
+            max_uploaded_profiles=settings.max_uploaded_profiles,
+            cloud_mode=settings.mode == "cloud",
+        )
 
-    def create(self) -> DemoSession:
+    def list_profiles(self) -> list[dict[str, Any]]:
+        return self._profiles.list_profiles()
+
+    def register_profile(self, markdown: str) -> dict[str, Any]:
+        return self._profiles.register_upload(markdown)
+
+    def create(
+        self,
+        *,
+        profile_ref: str = "no_profile",
+        language: str = "en",
+    ) -> DemoSession:
         with self._lock:
             if len(self._sessions) >= self._settings.max_sessions:
                 raise RuntimeError("Demo session capacity reached")
-            session = _build_session(self._settings)
+            profile = self._profiles.resolve(profile_ref)
+            if language not in profile.patient.languages:
+                raise ValueError("language is not enabled for this profile")
+            if self._settings.mode == "mock" and language != "en":
+                raise ValueError("mock Web Demo fixture supports English only")
+            session = _build_session(
+                self._settings,
+                profile=profile,
+                language=language,
+            )
             self._sessions[session.runtime.session.session_id] = session
             return session
 
@@ -183,27 +223,30 @@ class DemoSessionStore:
             session.close()
 
 
-def _build_session(settings: WebDemoSettings) -> DemoSession:
+def _build_session(
+    settings: WebDemoSettings,
+    *,
+    profile: ProfileBundle,
+    language: str,
+) -> DemoSession:
     root = Path(__file__).resolve().parents[2]
     fixture_path = root / "demo/fixtures/golden_path.json"
-    profile_path = root / "demo/profiles/david_demo.json"
     fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
-    profile = json.loads(profile_path.read_text(encoding="utf-8"))
-    patient = profile["patient"]
+    patient = profile.patient
     session_id = f"web-{uuid4().hex}"
     session_root = settings.audio_store_root / session_id
     audio_store = AudioStore(session_root)
     repository = SQLiteRepository(check_same_thread=False)
-    _seed_repository(repository, patient, profile)
+    profile_import = seed_profile_repository(repository, profile)
 
     if settings.mode == "cloud":
         if not settings.gateway_token:
             repository.close()
             raise RuntimeError("Cloud demo requires GATEWAY_TOKEN")
         voice_profile_id = settings.voice_profile_id
-        if voice_profile_id != profile["voice_consent"]["voice_profile_id"]:
+        if voice_profile_id != profile.voice_consent.voice_profile_id:
             repository.grant_voice_consent(
-                patient["id"],
+                patient.patient_id,
                 f"web-voice-consent-{voice_profile_id}",
                 "web-demo-official-voice-consent",
                 voice_profile_id,
@@ -217,12 +260,12 @@ def _build_session(settings: WebDemoSettings) -> DemoSession:
         asr = GatewayASRAdapter(
             client=client,
             audio_store=audio_store,
-            patient_id=patient["id"],
+            patient_id=patient.patient_id,
             session_id=session_id,
         )
         intent = GatewayIntentAdapter(
             client=client,
-            patient_id=patient["id"],
+            patient_id=patient.patient_id,
             session_id=session_id,
         )
         delegate_tts: TTSPort = GatewayTTSAdapter(
@@ -230,7 +273,7 @@ def _build_session(settings: WebDemoSettings) -> DemoSession:
             audio_store=audio_store,
         )
     else:
-        voice_profile_id = profile["voice_consent"]["voice_profile_id"]
+        voice_profile_id = profile.voice_consent.voice_profile_id
         asr = MockASRAdapter.from_json(fixture_path)
         intent = MockIntentAdapter()
         delegate_tts = CachedTTSAdapter(
@@ -247,8 +290,8 @@ def _build_session(settings: WebDemoSettings) -> DemoSession:
     )
     runtime.create_session(
         session_id=session_id,
-        patient_id=patient["id"],
-        language=fixture["language"],
+        patient_id=patient.patient_id,
+        language=language,
         voice_profile_id=voice_profile_id,
     )
     return DemoSession(
@@ -258,54 +301,9 @@ def _build_session(settings: WebDemoSettings) -> DemoSession:
         tts=tts,
         mode=settings.mode,
         storage_root=session_root,
+        profile=profile,
+        profile_import=profile_import,
         fixture_audio_id=fixture["audio_id"],
-    )
-
-
-def _seed_repository(
-    repository: SQLiteRepository, patient: dict, profile: dict
-) -> None:
-    repository.add_patient(patient["id"], patient["display_name"])
-    for item in patient["verified_phrases"]:
-        repository.seed_verified_memory(
-            patient["id"],
-            MemoryItem(
-                id=item["id"],
-                patient_id=patient["id"],
-                memory_type=MemoryType.SEMANTIC,
-                verification_level=VerificationLevel.GOLD,
-                text=item["text"],
-                language=item["language"],
-                context=item["context"],
-                usage_count=item["confirmations"],
-                last_used_at=datetime.now(UTC),
-                confirmation_session_id=item["confirmation_session_id"],
-            ),
-        )
-    for item in patient.get("context_memories", []):
-        repository.add_context_memory(
-            patient["id"],
-            MemoryItem(
-                id=item["id"],
-                patient_id=patient["id"],
-                memory_type=MemoryType.CONTEXT,
-                verification_level=VerificationLevel(
-                    item["verification_level"]
-                ),
-                text=item["text"],
-                language=item["language"],
-                context=item["context"],
-                usage_count=item["confirmations"],
-                last_used_at=datetime.now(UTC),
-                confirmation_session_id=item["confirmation_session_id"],
-            ),
-        )
-    voice = profile["voice_consent"]
-    repository.grant_voice_consent(
-        patient["id"],
-        voice["authorization_id"],
-        voice["consent_session_id"],
-        voice["voice_profile_id"],
     )
 
 
