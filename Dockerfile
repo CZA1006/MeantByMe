@@ -11,4 +11,6 @@ ENV PYTHONPATH=/app
 
 EXPOSE 8080
 
-CMD ["uvicorn", "services.gateway.app:app", "--host", "0.0.0.0", "--port", "8080"]
+# Bind to the platform-injected $PORT (Zeabur routes the public domain to it);
+# fall back to 8080 for plain `docker run`. Shell form so ${PORT} expands.
+CMD ["sh", "-c", "uvicorn services.gateway.app:app --host 0.0.0.0 --port ${PORT:-8080}"]
