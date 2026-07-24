@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import tempfile
 import time
 from dataclasses import dataclass
@@ -17,6 +16,7 @@ from meantbyme.adapters.intent.gateway import GatewayIntentAdapter
 from meantbyme.adapters.storage.sqlite import SQLiteRepository
 from meantbyme.adapters.tts.cached import CachedTTSAdapter
 from meantbyme.adapters.tts.gateway import GatewayTTSAdapter
+from meantbyme.config import DesktopSettings
 from meantbyme.core.domain import (
     CommandActor,
     ConfirmationMethod,
@@ -169,9 +169,8 @@ def _build_providers(
             tts_cache,
         )
 
-    base_url = gateway_url or os.getenv(
-        "GATEWAY_URL", "http://127.0.0.1:8000"
-    )
+    desktop_settings = DesktopSettings.from_env()
+    base_url = gateway_url or desktop_settings.gateway_url
     audio_path = dataset_path.parent / "audio" / f"{sample.sample_id}.wav"
     if not audio_path.is_file():
         raise FileNotFoundError(
@@ -185,6 +184,7 @@ def _build_providers(
         timeout_seconds=20.0,
         max_attempts=3,
         backoff_seconds=0.25,
+        token=desktop_settings.gateway_token,
     )
     return (
         GatewayASRAdapter(

@@ -10,6 +10,8 @@ from dotenv import load_dotenv
 class GatewaySettings:
     stepfun_api_key: str = field(default="", repr=False)
     openagents_api_key: str = field(default="", repr=False)
+    gateway_token: str = field(default="", repr=False)
+    rate_limit_per_minute: int = 120
     intent_provider: str = "stepfun"
     intent_model: str = "step-explore"
     provider_timeout_seconds: float = 20.0
@@ -24,6 +26,8 @@ class GatewaySettings:
     def __post_init__(self) -> None:
         if self.provider_max_attempts < 3:
             object.__setattr__(self, "provider_max_attempts", 3)
+        if self.rate_limit_per_minute < 1:
+            object.__setattr__(self, "rate_limit_per_minute", 1)
 
     @classmethod
     def from_env(cls, *, load_local_env: bool = True) -> "GatewaySettings":
@@ -38,6 +42,11 @@ class GatewaySettings:
         return cls(
             stepfun_api_key=os.getenv("STEPFUN_API_KEY", ""),
             openagents_api_key=os.getenv("OPENAGENTS_API_KEY", ""),
+            gateway_token=os.getenv("GATEWAY_TOKEN", ""),
+            rate_limit_per_minute=max(
+                1,
+                int(os.getenv("GATEWAY_RATE_LIMIT_PER_MINUTE", "120")),
+            ),
             intent_provider=provider,
             intent_model=os.getenv("INTENT_MODEL", default_model),
             provider_timeout_seconds=float(

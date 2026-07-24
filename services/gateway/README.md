@@ -1,7 +1,8 @@
 # MeantByMe localhost gateway
 
 The gateway is the only process that reads StepFun or OpenAgents API keys.
-Desktop adapters receive only `GATEWAY_URL`.
+Desktop adapters receive `GATEWAY_URL` and the caller-only
+`GATEWAY_TOKEN`.
 
 ```bash
 cp .env.example .env
@@ -12,6 +13,15 @@ cp .env.example .env
 The development server binds to `127.0.0.1:8000`. It does not log request
 bodies, headers, raw audio, candidate text, memory content, or provider
 responses.
+
+Set `GATEWAY_TOKEN` in `.env` for both the gateway and cloud-mode desktop
+client. Protected provider routes fail closed with `503` when the token is
+unset, while `GET /v1/health` remains public. Callers that bypass the desktop
+client must send `X-Gateway-Token: <token>`.
+
+The gateway applies a process-local fixed-window limit per client IP. This is
+appropriate for one Uvicorn worker. Multiple workers or Zeabur replicas require
+a shared rate-limit store before they can enforce a deployment-wide limit.
 
 The defaults use Step Plan:
 `STEPFUN_BASE_URL=https://api.stepfun.com/step_plan/v1`,

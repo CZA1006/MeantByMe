@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import io
 import logging
+import threading
+import time
 import wave
 from typing import Any, Literal
 
-from fastapi import FastAPI, Header, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from services.gateway.config import GatewaySettings
@@ -19,6 +22,27 @@ from services.gateway.provider_http import ProviderRequestError
 
 logger = logging.getLogger("meantbyme.gateway")
 MAX_AUDIO_BYTES = 32 * 1024 * 1024
+
+
+class FixedWindowRateLimiter:
+    """Process-local limiter; multi-replica deployments need a shared store."""
+
+    def __init__(self, limit: int, *, window_seconds: float = 60.0) -> None:
+        self._limit = max(1, limit)
+        self._window_seconds = window_seconds
+        self._windows: dict[str, tuple[float, int]] = {}
+        self._lock = threading.Lock()
+
+    def allow(self, key: str) -> bool:
+        now = time.monotonic()
+        with self._lock:
+            started_at, count = self._windows.get(key, (now, 0))
+            if now - started_at >= self._window_seconds:
+                started_at, count = now, 0
+            if count >= self._limit:
+                return False
+            self._windows[key] = (started_at, count + 1)
+            return True
 
 
 class GatewayModel(BaseModel):
@@ -52,6 +76,27 @@ def create_app(
     active_settings = settings or GatewaySettings.from_env()
     active_providers = providers or CloudProviderService(active_settings)
     application = FastAPI(title="MeantByMe Gateway", version="0.2.0")
+    rate_limiter = FixedWindowRateLimiter(
+        active_settings.rate_limit_per_minute
+    )
+
+    async def require_caller(request: Request) -> None:
+        configured_token = active_settings.gateway_token
+        if not configured_token:
+            raise HTTPException(
+                status_code=503,
+                detail="gateway token not configured",
+            )
+        supplied_token = request.headers.get("X-Gateway-Token", "")
+        if not hmac.compare_digest(supplied_token, configured_token):
+            raise HTTPException(
+                status_code=401,
+                detail="invalid gateway token",
+            )
+        client_host = request.client.host if request.client else "unknown"
+        rate_key = f"token-present:{client_host}"
+        if not rate_limiter.allow(rate_key):
+            raise HTTPException(status_code=429, detail="rate limited")
 
     async def run_provider(callable_, *args, **kwargs):
         try:
@@ -102,7 +147,10 @@ def create_app(
             ),
         }
 
-    @application.post("/v1/asr/primary")
+    @application.post(
+        "/v1/asr/primary",
+        dependencies=[Depends(require_caller)],
+    )
     async def asr_primary(
         request: Request,
         x_patient_id: str = Header(...),
@@ -118,14 +166,20 @@ def create_app(
             language_hint=x_language_hint,
         )
 
-    @application.post("/v1/intent/propose")
+    @application.post(
+        "/v1/intent/propose",
+        dependencies=[Depends(require_caller)],
+    )
     async def intent_propose(payload: IntentRequest) -> dict[str, Any]:
         return await run_provider(
             active_providers.propose_intent,
             payload.model_dump(mode="json"),
         )
 
-    @application.post("/v1/tts/synthesize")
+    @application.post(
+        "/v1/tts/synthesize",
+        dependencies=[Depends(require_caller)],
+    )
     async def tts_synthesize(payload: TTSRequest) -> Response:
         if payload.mode == "personal":
             if (
@@ -145,7 +199,10 @@ def create_app(
         )
         return Response(content=audio, media_type=media_type)
 
-    @application.post("/v1/tts/enroll-voice")
+    @application.post(
+        "/v1/tts/enroll-voice",
+        dependencies=[Depends(require_caller)],
+    )
     async def enroll_voice(
         request: Request,
         x_patient_id: str = Header(...),

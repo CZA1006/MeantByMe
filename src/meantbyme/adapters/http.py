@@ -42,11 +42,13 @@ class GatewayHttpClient:
         timeout_seconds: float = 8.0,
         max_attempts: int = 2,
         backoff_seconds: float = 0.1,
+        token: str = "",
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._timeout_seconds = timeout_seconds
         self._max_attempts = max(1, max_attempts)
         self._backoff_seconds = max(0.0, backoff_seconds)
+        self._token = token
 
     def post_json(
         self, path: str, payload: dict[str, Any]
@@ -94,10 +96,13 @@ class GatewayHttpClient:
     ) -> GatewayResponse:
         last_error: GatewayError | None = None
         for attempt in range(self._max_attempts):
+            request_headers = dict(headers or {})
+            if self._token:
+                request_headers["X-Gateway-Token"] = self._token
             request = urllib.request.Request(
                 f"{self._base_url}{path}",
                 data=body,
-                headers=headers or {},
+                headers=request_headers,
                 method=method,
             )
             try:

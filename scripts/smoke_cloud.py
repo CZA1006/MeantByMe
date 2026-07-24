@@ -10,6 +10,7 @@ from meantbyme.adapters.audio import AudioStore
 from meantbyme.adapters.http import GatewayHttpClient
 from meantbyme.adapters.intent import GatewayIntentAdapter
 from meantbyme.adapters.tts import GatewayTTSAdapter
+from meantbyme.config import DesktopSettings
 from meantbyme.core.domain import ConfirmedContext
 from meantbyme.core.runtime.evidence import build_transcript_evidence
 
@@ -39,10 +40,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
+    settings = DesktopSettings.from_env()
     client = GatewayHttpClient(
         args.gateway_url,
         timeout_seconds=args.timeout,
         max_attempts=2,
+        token=settings.gateway_token,
     )
     health_response = client.request("GET", "/v1/health")
     health = json.loads(health_response.body)

@@ -215,6 +215,7 @@ def run_cloud(
     audio_store_dir: Path | None = None,
     timeout_seconds: float = 20.0,
     max_attempts: int = 2,
+    gateway_token: str = "",
     situation: str | None = None,
     voice_profile_id: str = "cixingnansheng",
 ) -> dict:
@@ -251,6 +252,7 @@ def run_cloud(
         gateway_url,
         timeout_seconds=timeout_seconds,
         max_attempts=max_attempts,
+        token=gateway_token,
     )
     runtime = MeantByMeRuntime(
         asr=GatewayASRAdapter(
@@ -360,6 +362,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             audio_store_dir=args.audio_store_dir or settings.audio_store_dir,
             timeout_seconds=settings.gateway_timeout_seconds,
             max_attempts=settings.gateway_max_attempts,
+            gateway_token=settings.gateway_token,
             situation=args.situation,
             voice_profile_id=args.voice_profile_id,
         )
