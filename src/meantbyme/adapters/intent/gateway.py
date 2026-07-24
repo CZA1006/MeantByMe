@@ -85,7 +85,11 @@ class GatewayIntentAdapter:
         normalized = [normalize(item.text) for item in proposal.candidates]
         if len(set(normalized)) != len(normalized):
             raise ValueError("Cloud proposal candidates must be distinct")
-        locked = {normalize(token) for token in context.locked_tokens}
+        locked = {
+            part
+            for locked_token in context.locked_tokens
+            for part in tokenize(locked_token)
+        }
         for candidate in proposal.candidates:
             if not locked.issubset(set(tokenize(candidate.text))):
                 raise ValueError("Cloud proposal dropped confirmed tokens")

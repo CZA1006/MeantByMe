@@ -91,8 +91,9 @@ class TemplateIntentAdapter:
     ) -> None:
         candidate_tokens = set(tokenize(candidate.text))
         required = {
-            normalize(token)
-            for token in context.locked_tokens
+            part
+            for locked_token in context.locked_tokens
+            for part in tokenize(locked_token)
         }
         for value in context.locked_slots.values():
             required.update(tokenize(value))

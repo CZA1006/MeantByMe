@@ -335,6 +335,34 @@ class ConfirmedContext(BaseModel):
 
 ---
 
+## D18 — Language-aware tokenization (CJK) 🔴
+
+**缺陷(实测 2026-07-24):** 原 `tokenize()` 将连续 CJK 文本视为一个
+`\w` token。例如 `我不想明天出门。` 只产生 `["我不想明天出门"]`。因此
+中文核心槽位无法判定完整、locked-token 子集检查误拒绝有效候选、Memory
+token overlap 无法达到 `high`，D11 的降 band 与中文排序均失效。
+
+**决定:**
+
+- `tokenize()` 对 CJK 字符逐字分词，对 Latin/数字/下划线/撇号组成的 word
+  run 保持原有整词行为；混合文本同时支持两种粒度。
+- locked-token 约束的两侧都必须经过 `tokenize()`，禁止比较 normalized
+  phrase 与 token set。
+- CJK 核心槽位使用 normalized 文本上的中文谓语/时间短语匹配，并保持
+  D10 的语义规则：谓语 +（时间或其他内容）才算完整。
+- `normalize()`、`expression_hash()`、idempotency key 与 exact-match
+  ranking 路径不变；现有英文 tokenization 输出必须逐项保持不变。
+
+**理由:** 这是确定性 shell 的语言处理缺陷，不是 LLM 能力问题。中文的
+band、Memory overlap 与 locked-context 语义必须和英文等价，不能因文字
+系统不同而强制额外澄清或静默降级。
+
+**影响:** `core/personalization/text.py`、
+`core/policies/uncertainty.py`、Intent adapters 的 confirmed-context
+校验、SQLite Memory overlap、双语评测。
+
+---
+
 ## 决策汇总
 
 | ID | 主题 | 阻塞里程碑 1 | Owner | 状态 |
@@ -356,8 +384,10 @@ class ConfirmedContext(BaseModel):
 | D15 | 两层 consent 模型 | 🔴 | Nick | ✅ 已冻结 |
 | D16 | 高风险 strict 标志 | 🔴 | Nick | ✅ 已冻结 |
 | D17 | Gold 排序严格高于 Silver | 🔴 | Nick | ✅ 已冻结 |
+| D18 | CJK language-aware tokenization | 🔴 | Nick | ✅ 已冻结 |
 
-**开工前必须确认的阻塞项:** D1、D2、D4、D5(D3 的 schema 部分),及 agent/runtime 的 D10–D17。全部已冻结。
+**开工前必须确认的阻塞项:** D1、D2、D4、D5(D3 的 schema 部分),及
+agent/runtime 的 D10–D18。全部已冻结。
 
 ---
 
@@ -369,3 +399,4 @@ class ConfirmedContext(BaseModel):
 | 2026-07-23 | D1–D9 | 全部确认冻结 | 决策负责人确认 |
 | 2026-07-23 | D10–D16 | 新增 agent/runtime 设计决策并冻结 | Nick 确认 |
 | 2026-07-23 | D17 | Gold/Silver 排序权重与 Memory 来源追踪规则冻结 | Nick 确认 |
+| 2026-07-24 | D18 | 冻结 CJK 分词、槽位、locked-context 与 Memory overlap 等价规则 | Nick 确认 |

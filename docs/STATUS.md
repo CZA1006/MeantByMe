@@ -69,7 +69,7 @@ Last updated: 2026-07-24. Branch of record: `develop` (= `nick/runtime`).
 - ⬜ Remote persistence / backup, production reliability
 
 ## Evaluation & testing
-- ✅ pytest: **52 passing** (unit / safety / integration / gateway contracts / eval); mock+fallback golden paths green, UAR 0
+- ✅ pytest: **65 passing** (unit / safety / integration / gateway contracts / eval); mock+fallback golden paths green, UAR 0
 - ✅ Eval harness **spec** ([EVAL_HARNESS.md](EVAL_HARNESS.md)) + **implementation** (`src/meantbyme/eval`) with `mock` / `replay` / `cloud` modes, hard gates, high-risk redaction
 - ✅ 26-sample EN/ZH dataset with paired situational samples (`demo/eval/dataset.jsonl`)
 - ✅ **Live baseline (Step Plan, `step-explore`): Situation Sensitivity = 1.00 (2/2)** — identical fragments + differing `situation` each selected their own expected expression, no cross-contamination, EN and ZH
@@ -78,7 +78,7 @@ Last updated: 2026-07-24. Branch of record: `develop` (= `nick/runtime`).
 
 ## Known follow-ups (backlog)
 
-### 🔴 P1 — Chinese (CJK) tokenization gap in `core/` (functional defect)
+### ✅ Resolved 2026-07-24 — Chinese (CJK) tokenization gap in `core/`
 `core/personalization/text.py::tokenize` splits on whitespace, so a Chinese
 sentence becomes **one token**; `core/policies/uncertainty.py` matches against
 **English-only** predicate/time/function word sets. Measured 2026-07-24:
@@ -96,10 +96,12 @@ session **degrades to template fallback**. Memory-based reranking and the D11
 band downgrade also never fire for Chinese. Note the LLM itself (`step-explore`)
 handles Chinese correctly — the gap is purely in the deterministic core.
 
-**Fix direction:** language-aware tokenization (CJK runs → per-character tokens,
-ASCII → words), tokenize both sides of the locked-token check, and CJK predicate/
-time sets (or a CJK-specific core-slot heuristic). Must not regress English;
-record as a new frozen decision (D18) since it changes ranking/band semantics.
+**Resolution:** D18 adds language-aware tokenization (CJK → per-character,
+Latin → unchanged whole words), tokenizes both sides of locked-token checks,
+and uses CJK predicate/time phrase matching for core slots. Matching Chinese
+Memory now reaches `similarity_band=high`; complete Chinese evidence can reach
+LOW without an unnecessary clarification round. `normalize()` and
+`expression_hash()` remain unchanged.
 
 ### Other
 - ⬜ Add a structured `situation`/Context-Memory capture path (not just per-run `--situation`)

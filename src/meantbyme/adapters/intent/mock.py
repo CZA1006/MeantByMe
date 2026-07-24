@@ -78,11 +78,13 @@ class MockIntentAdapter:
         candidate: ExpressionCandidate, context: ConfirmedContext
     ) -> None:
         candidate_tokens = set(tokenize(candidate.text))
-        for locked_token in context.locked_tokens:
-            if normalize(locked_token) not in candidate_tokens:
-                raise ValueError(
-                    f"Candidate dropped locked token: {locked_token}"
-                )
+        required = {
+            part
+            for locked_token in context.locked_tokens
+            for part in tokenize(locked_token)
+        }
+        if not required.issubset(candidate_tokens):
+            raise ValueError("Candidate dropped locked confirmed context")
         if normalize(candidate.text) in {
             normalize(text) for text in context.rejected_texts
         }:
