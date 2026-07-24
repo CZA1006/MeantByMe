@@ -44,7 +44,8 @@ from meantbyme.eval.providers import (
     ReplayASRAdapter,
     ReplayIntentAdapter,
 )
-from meantbyme.eval.text import eval_tokens, normalize_for_eval, text_matches
+from meantbyme.eval.semantic import MeaningMatch, evaluate_meaning
+from meantbyme.eval.text import eval_tokens
 
 
 DISCLAIMER = "Simulated data. Not a clinical accuracy claim."
@@ -297,9 +298,7 @@ def _run_profile(
                     (
                         candidate
                         for candidate in candidates
-                        if text_matches(
-                            candidate.text, sample.acceptable_candidates
-                        )
+                        if _meaning_match(sample, candidate.text).matched
                     ),
                     None,
                 )
@@ -387,11 +386,22 @@ def _run_profile(
         repository.close()
 
 
+def _meaning_match(
+    sample: EvaluationSample, text: str | None
+) -> MeaningMatch:
+    return evaluate_meaning(
+        text,
+        acceptable_candidates=sample.acceptable_candidates,
+        required_meaning=sample.required_meaning,
+        forbidden_changes=sample.forbidden_changes,
+    )
+
+
 def _best_match_rank(
-    candidates: list[ExpressionCandidate], acceptable: list[str]
+    candidates: list[ExpressionCandidate], sample: EvaluationSample
 ) -> int | None:
     for rank, candidate in enumerate(candidates, start=1):
-        if text_matches(candidate.text, acceptable):
+        if _meaning_match(sample, candidate.text).matched:
             return rank
     return None
 
@@ -474,9 +484,7 @@ def _evaluate_sample(
         include_memories=True,
         gateway_url=gateway_url,
     )
-    rank_with = _best_match_rank(
-        coverage.candidates, sample.acceptable_candidates
-    )
+    rank_with = _best_match_rank(coverage.candidates, sample)
     rank_without: int | None = None
     if sample.memory_expected_to_help:
         no_memory = _run_profile(
@@ -487,9 +495,7 @@ def _evaluate_sample(
             include_memories=False,
             gateway_url=gateway_url,
         )
-        rank_without = _best_match_rank(
-            no_memory.candidates, sample.acceptable_candidates
-        )
+        rank_without = _best_match_rank(no_memory.candidates, sample)
     missing_rank = len(coverage.candidates) + 1
     improvement = (
         (rank_without or missing_rank) - (rank_with or missing_rank)
@@ -498,6 +504,7 @@ def _evaluate_sample(
     )
     unsupported, ai_added = _unsupported_counts(sample, full.selected)
     top3_hit = rank_with is not None and rank_with <= 3
+    selected_match = _meaning_match(sample, full.selected_text)
     redact_final = full.final_risk_level is RiskLevel.HIGH_RISK
     redact_candidates = any(
         classify_risk(candidate.text, candidate.risk_level)
@@ -509,6 +516,8 @@ def _evaluate_sample(
         "sample_id": sample.sample_id,
         "pair_id": sample.pair_id,
         "acceptable_candidates": sample.acceptable_candidates,
+        "required_meaning": sample.required_meaning,
+        "forbidden_changes": sample.forbidden_changes,
         "selected_text": full.selected_text,
         "spoken": full.spoken,
         "authorization_granted": full.authorization_granted,
@@ -542,9 +551,8 @@ def _evaluate_sample(
         ),
         "top3_hit": top3_hit,
         "best_match_rank": rank_with,
-        "selected_match": text_matches(
-            full.selected_text, sample.acceptable_candidates
-        ),
+        "selected_match": selected_match.matched,
+        "selected_match_basis": selected_match.basis,
         "final_expression": (
             "[REDACTED]"
             if redact_final and full.final_text

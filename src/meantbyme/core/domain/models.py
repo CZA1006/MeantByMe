@@ -219,6 +219,7 @@ class ExpressionSession(DomainModel):
     voice_profile_id: str
     evidence: TranscriptEvidence | None = None
     retrieved_memories: list[MemoryItem] = Field(default_factory=list)
+    retrieved_context: list[MemoryItem] = Field(default_factory=list)
     candidates: list[ExpressionCandidate] = Field(default_factory=list)
     selected_candidate_id: str | None = None
     patient_confirmed: bool = False

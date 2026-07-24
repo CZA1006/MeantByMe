@@ -54,7 +54,7 @@ def test_profile_plus_rich_single_asr_retrieves_only_relevant_context() -> None:
                         "provider": "single_primary",
                         "transcript": (
                             "Hi we are MeantByMe we help stroke survivors "
-                            "communicate their needs and speak after confirmation"
+                            "organize their needs and speak after confirmation"
                         ),
                         "language": "en",
                         "status": "success",

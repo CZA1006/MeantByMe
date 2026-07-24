@@ -50,12 +50,12 @@
       "memory_type": "context",
       "verification_level": "gold",
       "source": "patient",
-      "text": "She is building MeantByMe to help stroke survivors communicate.",
+      "text": "She is building MeantByMe to help stroke survivors organize appointment questions, action items, and communication needs.",
       "language": "en",
       "context": {
         "kind": "project",
         "project": "MeantByMe",
-        "tags": ["communication", "stroke survivors", "assistive technology"]
+        "tags": ["organize", "appointment questions", "action items", "communication needs", "stroke survivors", "assistive technology"]
       },
       "usage_count": 3,
       "confirmation_session_id": "simulated-lin-yue-confirmation-002",

@@ -386,7 +386,8 @@ writeback 与检索只有 semantic 表达，无法实现“知道患者每周日
   Silver 不得自动升级。
 - semantic candidate support 与 context retrieval 使用独立 repository
   方法。`search_verified_memories` 只返回 semantic；context 不得进入
-  candidate ranking、自动选择或声音授权。
+  semantic support、自动选择或声音授权。D21 后续允许相关、已验证 context
+  对 ordering 施加有上限的小幅影响，但不得写入 `memory_support_ids`。
 - runtime 按患者召回 context，通过纯函数 `compose_situation` 自动构造
   session situation；手工 `--situation` 仅作为优先级更高的 override。
 - 自动召回必须使用本轮 stable + uncertain fragments 做确定性相关性过滤，
@@ -437,6 +438,43 @@ context relevance retrieval、测试文档。
 
 ---
 
+## D21 — Ranker context-grounding 权重 🔴
+
+**缺口(实测 2026-07-24，Lin Yue case):** 语义正确的候选(如把 ASR 碎片补全
+为 “organize their needs”)因为 `organize` 落在 `ai_added_spans` 而吃到
+补全惩罚,而画像只有 Context-Memory、没有 Gold *semantic* 记忆可加分,
+导致语义最正确的候选排到 #3、被模板化的字面候选压在下面。Ranker 已按
+patient/AI span 与 Gold/Silver 语义记忆打分(D14/D17),但完全没有利用已检索
+到的 Context-Memory 作为排序证据。
+
+**决定:**
+
+- Ranker 新增 context-grounding 加分:当候选的 `ai_added_spans` 的**实义
+  词**与已检索 Context-Memory 的实义词重叠时，按 overlap / AI-added
+  实义词覆盖率给一个有上限的小幅加分——Gold context 上限 `+20`、
+  Silver(caregiver)上限 `+5`。代词、冠词、连词及 help/need/want 等泛词
+  不算 grounding；CJK 单字实义 token 必须与英文等价生效。
+- 该加分低于 Gold *semantic* exact/support(`+1000/+100`)，用于相近候选
+  的 ordering，不构成“任何基础分组合下绝不越序”的绝对保证；真正的硬边界
+  是它永远不自动选择——`rank_candidates` 仍只排序，患者仍显式选择并确认
+  (D14)。
+- Context 仅作排序/消歧**证据**。D21 明确修订 D19 原先“context 不得进入
+  candidate ranking”为“context 可有限影响 ordering”；它仍不得进入
+  semantic support / `memory_support_ids`、选择、确认或授权，也不改变 D11
+  的 band 下调(仍只看 Gold semantic memory)。
+- Context-Memory 沿用相关性检索(按 evidence 片段取 top-k),避免把整份
+  画像倾倒进排序;engine 将检索到的 context 存入 `ExpressionSession
+  .retrieved_context` 并传入 `rank_candidates(...)`。
+
+**理由:** 个性化应让与患者确认事实、日程和偏好一致的补全在近似候选中自然
+上浮；过去确认过的具体表达仍属于 semantic memory，权重显著更高。Context
+是证据不是意图，加分只能改变排序，不能替患者做决定。
+
+**影响:** `core/personalization/ranker.py`、`core/runtime/engine.py`、
+`ExpressionSession` domain 字段、ranker 测试、intent prompt 候选策略。
+
+---
+
 ## 决策汇总
 
 | ID | 主题 | 阻塞里程碑 1 | Owner | 状态 |
@@ -461,9 +499,10 @@ context relevance retrieval、测试文档。
 | D18 | CJK language-aware tokenization | 🔴 | Nick | ✅ 已冻结 |
 | D19 | Persistent Context-Memory + auto recall | 🔴 | Nick | ✅ 已冻结 |
 | D20 | Simulated Profile Test Bundle + minimum disclosure | 🔴 | Nick | ✅ 已冻结 |
+| D21 | Ranker context-grounding 权重 | 🔴 | Nick | ✅ 已冻结 |
 
 **开工前必须确认的阻塞项:** D1、D2、D4、D5(D3 的 schema 部分),及
-agent/runtime 的 D10–D20。全部已冻结。
+agent/runtime 的 D10–D21。全部已冻结。
 
 ---
 
@@ -480,3 +519,4 @@ agent/runtime 的 D10–D20。全部已冻结。
 | 2026-07-24 | D5/D16 | 补齐中文高风险确定性词表与 strict 确认覆盖 | Nick |
 | 2026-07-24 | D10 | 单路 ASR 内容丰富时改走 MEDIUM，tokens 仍保持 uncertain | Nick 确认 |
 | 2026-07-24 | D20 | 冻结结构化模拟画像、最小披露与有/无画像 A/B 测试规则 | Nick 确认 |
+| 2026-07-25 | D21 | 冻结按实义词覆盖率计算的 context-grounding 上限(Gold +20 / Silver +5)，仅排序、不自动选 | Nick 确认 |

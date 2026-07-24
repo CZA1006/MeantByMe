@@ -1,6 +1,8 @@
+import json
 from pathlib import Path
 
 from meantbyme.eval.models import load_dataset
+from meantbyme.eval.semantic import meaning_matches
 
 
 DATASET = Path("demo/eval/dataset.jsonl")
@@ -42,3 +44,31 @@ def test_flagship_situation_pairs_only_change_context_and_answer() -> None:
         assert left.seed_memories == right.seed_memories
         assert left.situation != right.situation
         assert left.intended_expression != right.intended_expression
+
+
+def test_lin_yue_semantic_case_accepts_meaning_not_wrong_action() -> None:
+    case = json.loads(
+        Path("demo/eval/lin_yue_profile_cases.jsonl")
+        .read_text(encoding="utf-8")
+        .strip()
+    )
+    rubric = {
+        "acceptable_candidates": case["acceptable_candidates"],
+        "required_meaning": case["required_meaning"],
+        "forbidden_changes": case["forbidden_changes"],
+    }
+
+    assert meaning_matches(
+        (
+            "Hi, we are MeantByMe. We help stroke survivors organize "
+            "their needs and speak only after confirmation."
+        ),
+        **rubric,
+    )
+    assert not meaning_matches(
+        (
+            "Hi, we are MeantByMe. We help stroke survivors meet "
+            "their needs and speak only after confirmation."
+        ),
+        **rubric,
+    )

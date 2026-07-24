@@ -59,6 +59,8 @@ class EvaluationSample(EvalModel):
     stable_fragments: list[str] = Field(min_length=1)
     situation: str
     acceptable_candidates: list[str] = Field(min_length=1)
+    required_meaning: dict[str, list[str]] = Field(default_factory=dict)
+    forbidden_changes: list[str] = Field(default_factory=list)
     risk_level: RiskLevel
     asr_fixture: list[ASRFixture] = Field(min_length=1)
     seed_memories: list[SeedMemory] = Field(default_factory=list)
@@ -92,6 +94,19 @@ class EvaluationSample(EvalModel):
             )
         if len(acceptable) != len(self.acceptable_candidates):
             raise ValueError("acceptable_candidates must be distinct")
+        for slot, alternatives in self.required_meaning.items():
+            if not slot.strip():
+                raise ValueError("required_meaning slot names must not be blank")
+            if not alternatives or any(
+                not alternative.strip() for alternative in alternatives
+            ):
+                raise ValueError(
+                    "required_meaning alternatives must be non-empty strings"
+                )
+        if any(not phrase.strip() for phrase in self.forbidden_changes):
+            raise ValueError(
+                "forbidden_changes entries must be non-empty strings"
+            )
         return self
 
 

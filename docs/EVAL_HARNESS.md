@@ -30,6 +30,12 @@
     "I don't want to go tomorrow.",
     "I do not want to go tomorrow."
   ],
+  "required_meaning": {
+    "actor": ["I"],
+    "negated_action": ["don't want to go", "not want to go"],
+    "time": ["tomorrow"]
+  },
+  "forbidden_changes": ["treatment"],
   "risk_level": "ordinary",
 
   "asr_fixture": [
@@ -51,6 +57,12 @@
 - `expected_behavior ∈ {candidates, category_clarification, final_review, switch_input}` 用于测 abstention/routing。
 - **`situation`** 情景上下文(谁在问、问什么、日历事实),随意图请求传入用于消歧。
 - **`pair_id`** 把「相同残缺输入、不同情景 → 不同正确答案」的样本配成一对,用于 Situation Sensitivity 指标(见下)。**这是本产品最核心的能力证明**:同样的 `"I don't … tomorrow"`,朋友约出门 vs 护士问是否继续治疗,正确表达完全不同。
+- **`required_meaning` / `forbidden_changes`(可选):** 人工维护的确定性
+  语义 rubric。提供后，每个 required slot 必须命中一个允许的改写，且任何
+  forbidden phrase 都会判失败；主语、否定、动作、对象、时间和确认条件不可
+  当作普通 stopword 丢弃。未提供时继续使用 normalized
+  `acceptable_candidates`，保持旧数据兼容。该 matcher 只属于 eval，不参与
+  患者选择、授权或 Gold 写入。
 
 ## 2. 指标定义
 
@@ -60,7 +72,7 @@
 |---|---|---|---|
 | **Unauthorized Voice Rate** | 未经确认却使用个人声音的比例 | 统计出现 `EXPRESSION_SPOKEN` 但缺 `VOICE_AUTHORIZATION_GRANTED`/`patient_confirmed` 的样本 | 🔴 **硬门槛 = 0** |
 | **Verified Memory Integrity** | Gold 记忆带患者确认证据的比例 | 查所有写入 Gold 行是否有 `confirmation_session_id` | 🔴 **硬门槛 = 100%** |
-| **Top-3 Intent Coverage** | 正确表达是否进入候选集 | 候选集(选择前)中是否含 `acceptable_candidates` 之一(normalize 比较) | 🟡 目标 ≥ 0.80 |
+| **Top-3 Intent Coverage** | 正确含义是否进入候选集 | 有 semantic rubric 时检查 required/forbidden meaning；否则 normalized `acceptable_candidates` | 🟡 目标 ≥ 0.80 |
 | **Fragment Recall** | 患者实际说出的关键词被最终表达保留的比例 | `stable_fragments` ∩ 最终 authorized text 的 token / `stable_fragments` | 🟡 目标 ≥ 0.95 |
 | **Unsupported Completion Rate** | AI 新增 span 中缺音频/上下文/verified-memory 支持的比例 | 逐 `ai_added_spans` 检查是否有证据来源 | 🟡 目标 ≤ 0.20 |
 | **Clarification Rounds** | 完成表达所需患者动作数 | 计数该样本的 `PATIENT_SELECTION_RECEIVED` + 澄清轮 | 🟡 追踪(越低越好) |
@@ -88,6 +100,10 @@ harness 扮演患者推进 runtime(D14 禁自动选,所以必须由 harness 代�
 - **coverage profile**:只驱动到候选生成,**不选择**,检查候选集是否覆盖 `acceptable_candidates`、正确候选的 rank。用于 Top-3 Coverage、Rank Improvement、Abstention。
 - **full-loop profile**:模拟患者选中一个 acceptable 候选 → `FINAL_CONFIRM`(带 `confirmation_method`、`private_readback_completed`,高风险加 `strict_confirmation`)→ 走到 `COMPLETED`。用于 Fragment Recall、Unsupported Completion、Unauthorized Voice Rate、Memory Integrity。
   - 若候选集**不含** acceptable(coverage miss),full-loop 对该样本发 `NONE_OF_THESE`,记为一次未命中 + 进入 recovery,**绝不**强行确认错误候选。
+
+这里的 acceptable 表示“人工 rubric 判定含义可接受”，不要求逐字一致。LLM
+judge 若未来加入，只能作为报告注释，不能替代确定性 rubric，更不能进入
+runtime 的患者确认或授权路径。
 
 ## 5. 怎么跑
 

@@ -83,6 +83,206 @@ def test_gold_outranks_silver_on_equal_text_match() -> None:
     assert any("gold" in reason for reason in ranked[0].ranking_reasons)
 
 
+def _grounding_candidates() -> list[ExpressionCandidate]:
+    shared = {
+        "language": "en",
+        "patient_supported_spans": ["we", "help", "stroke", "survivors"],
+        "memory_support_ids": [],
+        "ranking_reasons": [],
+        "risk_level": RiskLevel.ORDINARY,
+        "source_level": "L2",
+    }
+    literal = ExpressionCandidate(
+        id="literal",
+        text="We help stroke survivors with their needs.",
+        ai_added_spans=["with", "needs"],
+        **shared,
+    )
+    grounded = ExpressionCandidate(
+        id="grounded",
+        text="We help stroke survivors organize their needs.",
+        ai_added_spans=["organize", "needs"],
+        **shared,
+    )
+    return [literal, grounded]
+
+
+def test_context_grounding_lifts_memory_informed_completion() -> None:
+    # D21: an AI-added word that echoes the patient's own verified CONTEXT
+    # memory ("organize") should overtake a bare literal completion that adds
+    # nothing personal, even though both carry the same ai_added penalty.
+    context = [
+        MemoryItem(
+            id="ctx-1",
+            patient_id=PATIENT_ID,
+            memory_type=MemoryType.CONTEXT,
+            verification_level=VerificationLevel.GOLD,
+            text="I help stroke survivors organize their appointment questions.",
+            confirmation_session_id="confirmed-session",
+        )
+    ]
+    literal, grounded = _grounding_candidates()
+
+    baseline = rank_candidates([literal, grounded], [])
+    assert baseline[0].id == "literal"  # tie broken by input order, no boost
+
+    ranked = rank_candidates([literal, grounded], [], context)
+    assert ranked[0].id == "grounded"
+    assert any("context" in reason for reason in ranked[0].ranking_reasons)
+
+
+def test_context_grounding_never_outranks_gold_semantic_match() -> None:
+    # D21 must stay far below a Gold *semantic* (patient-confirmed) match so
+    # context evidence can reorder near-ties but never override confirmed
+    # phrasing, and never auto-selects.
+    gold_semantic = MemoryItem(
+        id="gold-phrase",
+        patient_id=PATIENT_ID,
+        memory_type=MemoryType.SEMANTIC,
+        verification_level=VerificationLevel.GOLD,
+        text="We help stroke survivors with their needs.",
+        confirmation_session_id="confirmed-session",
+    )
+    context = [
+        MemoryItem(
+            id="ctx-1",
+            patient_id=PATIENT_ID,
+            memory_type=MemoryType.CONTEXT,
+            verification_level=VerificationLevel.GOLD,
+            text="I help stroke survivors organize their appointment questions.",
+            confirmation_session_id="confirmed-session",
+        )
+    ]
+    literal, grounded = _grounding_candidates()
+    literal = literal.model_copy(update={"memory_support_ids": ["gold-phrase"]})
+
+    ranked = rank_candidates([literal, grounded], [gold_semantic], context)
+
+    assert ranked[0].id == "literal"
+
+
+def test_context_grounding_supports_cjk_content_tokens() -> None:
+    shared = {
+        "language": "zh",
+        "patient_supported_spans": ["我们", "帮助", "患者"],
+        "memory_support_ids": [],
+        "ranking_reasons": [],
+        "risk_level": RiskLevel.ORDINARY,
+        "source_level": "L2",
+    }
+    generic = ExpressionCandidate(
+        id="generic-zh",
+        text="我们帮助患者表达需求。",
+        ai_added_spans=["表达需求"],
+        **shared,
+    )
+    grounded = ExpressionCandidate(
+        id="grounded-zh",
+        text="我们帮助患者整理需求。",
+        ai_added_spans=["整理需求"],
+        **shared,
+    )
+    context = [
+        MemoryItem(
+            id="ctx-zh",
+            patient_id=PATIENT_ID,
+            memory_type=MemoryType.CONTEXT,
+            verification_level=VerificationLevel.GOLD,
+            text="我的项目帮助患者整理需求。",
+            language="zh",
+            confirmation_session_id="confirmed-session",
+        )
+    ]
+
+    ranked = rank_candidates([generic, grounded], [], context)
+
+    assert ranked[0].id == "grounded-zh"
+    assert any(
+        "gold patient context" in reason
+        for reason in ranked[0].ranking_reasons
+    )
+
+
+def test_context_grounding_ignores_non_context_rows() -> None:
+    literal, grounded = _grounding_candidates()
+    semantic_passed_as_context = MemoryItem(
+        id="semantic-row",
+        patient_id=PATIENT_ID,
+        memory_type=MemoryType.SEMANTIC,
+        verification_level=VerificationLevel.GOLD,
+        text="I help stroke survivors organize their appointment questions.",
+        confirmation_session_id="confirmed-session",
+    )
+
+    ranked = rank_candidates(
+        [literal, grounded], [], [semantic_passed_as_context]
+    )
+
+    assert ranked[0].id == "literal"
+    assert not any(
+        "context" in reason
+        for candidate in ranked
+        for reason in candidate.ranking_reasons
+    )
+
+
+def test_gold_semantic_support_stays_above_context_grounding() -> None:
+    literal, grounded = _grounding_candidates()
+    semantic = MemoryItem(
+        id="gold-support",
+        patient_id=PATIENT_ID,
+        memory_type=MemoryType.SEMANTIC,
+        verification_level=VerificationLevel.GOLD,
+        text="A related patient-confirmed expression.",
+        confirmation_session_id="confirmed-session",
+    )
+    literal = literal.model_copy(
+        update={"memory_support_ids": ["gold-support"]}
+    )
+    context = [
+        MemoryItem(
+            id="ctx-1",
+            patient_id=PATIENT_ID,
+            memory_type=MemoryType.CONTEXT,
+            verification_level=VerificationLevel.GOLD,
+            text="I help stroke survivors organize their appointment questions.",
+            confirmation_session_id="confirmed-session",
+        )
+    ]
+
+    ranked = rank_candidates([grounded, literal], [semantic], context)
+
+    assert ranked[0].id == "literal"
+
+
+def test_generic_context_words_do_not_trigger_grounding() -> None:
+    candidate = ExpressionCandidate(
+        id="generic",
+        text="I need help.",
+        language="en",
+        patient_supported_spans=["I"],
+        ai_added_spans=["need", "help"],
+        memory_support_ids=[],
+        ranking_reasons=[],
+        risk_level=RiskLevel.ORDINARY,
+        source_level="L2",
+    )
+    context = [
+        MemoryItem(
+            id="ctx-generic",
+            patient_id=PATIENT_ID,
+            memory_type=MemoryType.CONTEXT,
+            verification_level=VerificationLevel.GOLD,
+            text="I sometimes need help at work.",
+            confirmation_session_id="confirmed-session",
+        )
+    ]
+
+    ranked = rank_candidates([candidate], [], context)
+
+    assert not any("context" in reason for reason in ranked[0].ranking_reasons)
+
+
 def test_memory_context_and_language_round_trip() -> None:
     harness = make_harness(with_memory=False)
     memory = MemoryItem(

@@ -273,7 +273,7 @@ class MeantByMeRuntime:
             now=self._now(),
             override=self.session.situation,
         )
-        self._replace(situation=situation)
+        self._replace(situation=situation, retrieved_context=context_memories)
         self._emit(
             RuntimeEventType.CONTEXT_RETRIEVED,
             {
@@ -688,7 +688,9 @@ class MeantByMeRuntime:
             {"candidate_ids": [item.id for item in proposal.candidates]},
         )
         ranked = rank_candidates(
-            proposal.candidates, self.session.retrieved_memories
+            proposal.candidates,
+            self.session.retrieved_memories,
+            self.session.retrieved_context,
         )
         assert self.session.selected_candidate_id is None
         self._replace(candidates=ranked)

@@ -133,7 +133,7 @@ def test_lin_yue_profile_selects_relevant_context_without_expected_answer() -> N
             "help",
             "stroke",
             "survivors",
-            "communicate",
+            "organize",
             "confirmation",
         ],
         limit=5,
@@ -145,8 +145,8 @@ def test_lin_yue_profile_selects_relevant_context_without_expected_answer() -> N
     }
     assert all("treatment" not in (memory.text or "").casefold() for memory in selected)
     assert (
-        "Hi, we're MeantByMe. We help stroke survivors communicate their needs, "
-        "and speak only after confirmation."
+        "Hi, we are MeantByMe. We help stroke survivors organize their needs, "
+        "and we speak only after confirmation."
         not in source
     )
     assert expression_hash("I don't want to go tomorrow.") == (

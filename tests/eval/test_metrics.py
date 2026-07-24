@@ -47,6 +47,44 @@ def test_situation_sensitivity_rejects_cross_contamination() -> None:
     )
 
 
+def test_situation_sensitivity_uses_semantic_slots_for_paraphrases() -> None:
+    records = [
+        {
+            "sample_id": "social",
+            "pair_id": "tomorrow-semantic",
+            "acceptable_candidates": ["I don't want to go tomorrow."],
+            "required_meaning": {
+                "actor": ["I"],
+                "negated_action": ["don't want to go", "not want to go"],
+                "time": ["tomorrow"],
+            },
+            "forbidden_changes": ["treatment"],
+            "selected_text": "I do not want to go tomorrow.",
+        },
+        {
+            "sample_id": "medical",
+            "pair_id": "tomorrow-semantic",
+            "acceptable_candidates": ["I don't want treatment tomorrow."],
+            "required_meaning": {
+                "actor": ["I"],
+                "negated_action": [
+                    "don't want treatment",
+                    "not want treatment",
+                ],
+                "time": ["tomorrow"],
+            },
+            "forbidden_changes": ["go tomorrow"],
+            "selected_text": "I do not want treatment tomorrow.",
+        },
+    ]
+
+    assert situation_sensitivity(records) == 1.0
+
+    records[0]["selected_text"] = "I do not want treatment tomorrow."
+    records[1]["selected_text"] = "I do not want to go tomorrow."
+    assert situation_sensitivity(records) == 0.0
+
+
 def test_hard_gate_metrics_detect_synthetic_violations() -> None:
     records = [
         {

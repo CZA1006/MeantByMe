@@ -5,7 +5,7 @@ from collections.abc import Iterable, Mapping
 from statistics import fmean
 from typing import Any
 
-from meantbyme.eval.text import normalize_for_eval, text_matches
+from meantbyme.eval.semantic import meaning_matches
 
 
 def ratio(numerator: int | float, denominator: int | float) -> float:
@@ -47,20 +47,32 @@ def situation_sensitivity(
         pair_passes = True
         for index, member in enumerate(members):
             selected = member.get("selected_text")
-            own = list(member["acceptable_candidates"])
             other = members[1 - index]
-            other_only = {
-                normalize_for_eval(item)
-                for item in other["acceptable_candidates"]
-                if not text_matches(item, own)
-            }
-            selected_normalized = (
-                normalize_for_eval(selected) if selected is not None else ""
+            matches_own = meaning_matches(
+                selected,
+                acceptable_candidates=list(
+                    member["acceptable_candidates"]
+                ),
+                required_meaning=dict(
+                    member.get("required_meaning") or {}
+                ),
+                forbidden_changes=list(
+                    member.get("forbidden_changes") or []
+                ),
             )
-            if (
-                not text_matches(selected, own)
-                or selected_normalized in other_only
-            ):
+            matches_other = meaning_matches(
+                selected,
+                acceptable_candidates=list(
+                    other["acceptable_candidates"]
+                ),
+                required_meaning=dict(
+                    other.get("required_meaning") or {}
+                ),
+                forbidden_changes=list(
+                    other.get("forbidden_changes") or []
+                ),
+            )
+            if not matches_own or matches_other:
                 pair_passes = False
         passing += pair_passes
     return ratio(passing, len(grouped))
