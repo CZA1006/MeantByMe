@@ -69,11 +69,39 @@ Last updated: 2026-07-24. Branch of record: `develop` (= `nick/runtime`).
 - ⬜ Remote persistence / backup, production reliability
 
 ## Evaluation & testing
-- ✅ pytest: 44 passing (unit / safety / integration / gateway contracts); mock+fallback golden paths green, UAR 0
-- ✅ Eval harness **spec** ([EVAL_HARNESS.md](EVAL_HARNESS.md))
-- ⬜ Eval harness **implementation** + 20–30 labeled bilingual samples + quality baseline numbers
+- ✅ pytest: **52 passing** (unit / safety / integration / gateway contracts / eval); mock+fallback golden paths green, UAR 0
+- ✅ Eval harness **spec** ([EVAL_HARNESS.md](EVAL_HARNESS.md)) + **implementation** (`src/meantbyme/eval`) with `mock` / `replay` / `cloud` modes, hard gates, high-risk redaction
+- ✅ 26-sample EN/ZH dataset with paired situational samples (`demo/eval/dataset.jsonl`)
+- ✅ **Live baseline (Step Plan, `step-explore`): Situation Sensitivity = 1.00 (2/2)** — identical fragments + differing `situation` each selected their own expected expression, no cross-contamination, EN and ZH
+- ⚠️ **Mock-mode metrics are ~1.0 by construction** (the fixture seeds each sample's own `intended_expression` and ignores evidence/situation). Mock = plumbing regression only; quality claims must come from `cloud` mode. Documented in `src/meantbyme/eval/README.md`.
+- ⬜ Full 26-sample **cloud** baseline (needs one WAV per sample; consumes free credit)
 
 ## Known follow-ups (backlog)
+
+### 🔴 P1 — Chinese (CJK) tokenization gap in `core/` (functional defect)
+`core/personalization/text.py::tokenize` splits on whitespace, so a Chinese
+sentence becomes **one token**; `core/policies/uncertainty.py` matches against
+**English-only** predicate/time/function word sets. Measured 2026-07-24:
+
+| Behaviour | English | Chinese |
+|---|---|---|
+| `tokenize("我不想明天出门。")` | — | `['我不想明天出门']` (single token) |
+| `core_slots_present(...)` | `True` | **`False`** → never reaches LOW band, always an extra clarification round |
+| locked-token subset check | passes | **fails** (`{'明天'} ⊄ {'我不想明天出门'}`) |
+| memory token-overlap similarity | works | **empty intersection** → `similarity_band` never `high` |
+
+**Impact:** after `CONFIRM_HEARD_CONTENT` locks fragments, `GatewayIntentAdapter._validate_contract`
+rejects otherwise-valid Chinese candidates as "dropped confirmed tokens" and the
+session **degrades to template fallback**. Memory-based reranking and the D11
+band downgrade also never fire for Chinese. Note the LLM itself (`step-explore`)
+handles Chinese correctly — the gap is purely in the deterministic core.
+
+**Fix direction:** language-aware tokenization (CJK runs → per-character tokens,
+ASCII → words), tokenize both sides of the locked-token check, and CJK predicate/
+time sets (or a CJK-specific core-slot heuristic). Must not regress English;
+record as a new frozen decision (D18) since it changes ranking/band semantics.
+
+### Other
 - ⬜ Add a structured `situation`/Context-Memory capture path (not just per-run `--situation`)
 - ⬜ Ed25519 receipt signing (D3 — P0 ships unsigned)
 - ⬜ `audioop` deprecation (removed in Python 3.13) — revisit before any 3.13 upgrade
