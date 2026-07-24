@@ -16,6 +16,20 @@ not a clinical evaluation and must not be populated with patient data.
 sample-bound deterministic intent proposals, cached WAV output, and a fresh
 in-memory SQLite database for every profile.
 
+> ⚠️ **Mock metric values are NOT evidence of model quality.** The mock intent
+> adapter is a fixture bound to the sample: it seeds each sample's own
+> `intended_expression` into the candidate set and ignores both the transcript
+> evidence and the `situation`. Coverage, Fragment Recall and Situation
+> Sensitivity are therefore ~1.0 **by construction**. Mock mode exists to
+> regression-test the *harness and runtime plumbing* (state transitions, memory
+> writeback, hard gates) deterministically and without spending credit.
+> **Quality claims must come from `cloud` mode against real models.**
+>
+> Reference live result (Step Plan, `step-explore`, 2026-07-24): the two
+> flagship pairs — identical fragments, differing `situation` — each selected
+> their own expected expression with no cross-contamination, in both English
+> and Chinese. Real **Situation Sensitivity = 1.00 (2/2)**.
+
 ## Manual Step Plan cloud run
 
 Start the local gateway with a real, gitignored `.env`, then place one
