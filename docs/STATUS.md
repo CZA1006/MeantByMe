@@ -111,6 +111,23 @@ Memory now reaches `similarity_band=high`; complete Chinese evidence can reach
 LOW without an unnecessary clarification round. `normalize()` and
 `expression_hash()` remain unchanged.
 
+### 🌐 Live deployment — verified + region latency limitation (2026-07-25)
+Both public services verified end-to-end: `meantbyme.zeabur.app` (gateway: auth-gated
+ASR/intent/TTS) and `meantbyme-demo.zeabur.app` (web demo: session → audio → **ASR
+success** → fragments → heard-content review, cloud mode, access-gated). Real
+disambiguation confirmed on the Lin Yue persona (17 verified context memories;
+2 `unverified`/`prompt_eligible:false` fixtures correctly excluded from the LLM):
+`step-explore` recognized fragmented "mean by me" as her project **MeantByMe** and
+completed the pitch, offering distinct candidates + a clarification question.
+
+**Limitation:** the Zeabur server is in Santa Clara (US) while StepFun is in China,
+so uploading the base64 PCM payload is slow and scales with audio length —
+~5.5s round-trip for a 1s clip, ~37s for a 15.5s clip. Mitigations applied:
+gateway `PROVIDER_TIMEOUT_SECONDS=90`/`ROUTE_TIMEOUT_SECONDS=100`,
+`WEB_DEMO_MAX_AUDIO_SECONDS=8`. Demo with short fragmented utterances (2–4s, the
+real product input) → ~9–11s. Root fix (post-hackathon): host the gateway in an
+Asia region near StepFun. Not a logic defect — deployment/region only.
+
 ### Other
 - ✅ Persistent structured Context-Memory auto-recall (D19); `--situation` remains an explicit override
 - ⬜ Ed25519 receipt signing (D3 — P0 ships unsigned)
