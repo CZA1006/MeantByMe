@@ -12,6 +12,7 @@ from typing import Any
 class ProviderRequestError(RuntimeError):
     def __init__(self, reason: str, *, status_code: int | None = None) -> None:
         super().__init__(reason)
+        self.reason = reason
         self.status_code = status_code
 
 

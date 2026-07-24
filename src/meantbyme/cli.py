@@ -27,6 +27,10 @@ from meantbyme.core.domain import (
 from meantbyme.core.runtime import MeantByMeRuntime
 
 
+class CandidateCoverageMiss(RuntimeError):
+    pass
+
+
 def _repository_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
@@ -131,8 +135,13 @@ def _drive_golden_path(
             for candidate in runtime.session.candidates
             if candidate.text == intended_expression
         ),
-        runtime.session.candidates[0],
+        None,
     )
+    if selected is None:
+        _command(runtime, PatientCommandType.NONE_OF_THESE)
+        raise CandidateCoverageMiss(
+            "Expected expression was not present in provider candidates"
+        )
     _command(
         runtime,
         PatientCommandType.SELECT_CANDIDATE,
@@ -195,14 +204,15 @@ def run_mock(database: str = ":memory:") -> dict:
         language=fixture["language"],
         voice_profile_id=profile["voice_consent"]["voice_profile_id"],
     )
-    _drive_golden_path(
-        runtime,
-        audio_id=fixture["audio_id"],
-        intended_expression=fixture["intended_expression"],
-    )
-    result = _result(runtime, repository, mode="mock")
-    repository.close()
-    return result
+    try:
+        _drive_golden_path(
+            runtime,
+            audio_id=fixture["audio_id"],
+            intended_expression=fixture["intended_expression"],
+        )
+        return _result(runtime, repository, mode="mock")
+    finally:
+        repository.close()
 
 
 def run_cloud(
@@ -213,7 +223,7 @@ def run_cloud(
     audio_device: int | str | None = None,
     database: str = ":memory:",
     audio_store_dir: Path | None = None,
-    timeout_seconds: float = 20.0,
+    timeout_seconds: float = 35.0,
     max_attempts: int = 2,
     gateway_token: str = "",
     situation: str | None = None,
@@ -280,14 +290,25 @@ def run_cloud(
         voice_profile_id=voice_profile_id,
         situation=situation,
     )
-    _drive_golden_path(
-        runtime,
-        audio_id=audio_id,
-        intended_expression=fixture["intended_expression"],
-    )
-    result = _result(runtime, repository, mode="cloud")
-    repository.close()
-    return result
+    try:
+        try:
+            _drive_golden_path(
+                runtime,
+                audio_id=audio_id,
+                intended_expression=fixture["intended_expression"],
+            )
+        except CandidateCoverageMiss:
+            result = _result(runtime, repository, mode="cloud")
+            result.update(
+                {
+                    "coverage_miss": True,
+                    "failure_reason": "expected_candidate_missing",
+                }
+            )
+            return result
+        return _result(runtime, repository, mode="cloud")
+    finally:
+        repository.close()
 
 
 def run_fallback(database: str = ":memory:") -> dict:

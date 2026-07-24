@@ -10,6 +10,7 @@ from meantbyme.adapters.http import GatewayHttpClient
 from meantbyme.config import DesktopSettings
 from services.gateway.app import create_app
 from services.gateway.config import GatewaySettings
+from services.gateway.providers import ProviderContractError
 
 
 TOKEN = "test-gateway-token"
@@ -136,6 +137,28 @@ def test_unconfigured_gateway_fails_closed_but_health_is_public() -> None:
     assert health.json()["status"] == "ok"
 
 
+def test_root_is_public_and_exposes_no_credentials() -> None:
+    settings = GatewaySettings(
+        gateway_token="gateway-secret-value",
+        stepfun_api_key="stepfun-secret-value",
+    )
+    response = TestClient(
+        create_app(
+            settings=settings,
+            providers=RecordingGatewayProvider(),
+        )
+    ).get("/")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "service": "MeantByMe Gateway",
+        "status": "ok",
+        "health": "/v1/health",
+    }
+    assert "gateway-secret-value" not in response.text
+    assert "stepfun-secret-value" not in response.text
+
+
 def test_health_never_requires_or_exposes_credentials() -> None:
     settings = GatewaySettings(
         gateway_token="gateway-secret-value",
@@ -155,6 +178,33 @@ def test_health_never_requires_or_exposes_credentials() -> None:
     assert "stepfun-secret-value" not in body
     assert "openagents-secret-value" not in body
     assert "gateway_token" not in body
+
+
+def test_provider_contract_error_returns_safe_code(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    class InvalidIntentProvider(RecordingGatewayProvider):
+        def propose_intent(
+            self, payload: dict[str, Any]
+        ) -> dict[str, Any]:
+            del payload
+            raise ProviderContractError(
+                "provider payload failed validation",
+                code="intent_domain_validation_failed",
+            )
+
+    response = _client(provider=InvalidIntentProvider()).post(
+        "/v1/intent/propose",
+        json=INTENT_PAYLOAD,
+        headers={"X-Gateway-Token": TOKEN},
+    )
+
+    assert response.status_code == 502
+    assert response.json() == {
+        "detail": "intent_domain_validation_failed"
+    }
+    assert "intent_domain_validation_failed" in caplog.text
+    assert TOKEN not in caplog.text
 
 
 def test_rate_limiter_allows_limit_then_returns_429() -> None:
@@ -194,12 +244,13 @@ def test_desktop_client_sends_configured_token_and_omits_empty_token(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     requests: list[urllib.request.Request] = []
+    timeouts: list[float] = []
 
     def fake_urlopen(
         request: urllib.request.Request, *, timeout: float
     ) -> _HTTPResponse:
-        del timeout
         requests.append(request)
+        timeouts.append(timeout)
         return _HTTPResponse()
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
@@ -220,6 +271,7 @@ def test_desktop_client_sends_configured_token_and_omits_empty_token(
     }
     assert configured_headers["x-gateway-token"] == TOKEN
     assert "x-gateway-token" not in empty_headers
+    assert timeouts == [35.0, 35.0]
 
 
 def test_gateway_and_desktop_settings_load_token_from_environment(
@@ -236,3 +288,17 @@ def test_gateway_and_desktop_settings_load_token_from_environment(
     assert desktop.gateway_token == TOKEN
     assert TOKEN not in repr(gateway)
     assert TOKEN not in repr(desktop)
+
+
+def test_desktop_timeout_exceeds_gateway_route_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GATEWAY_TIMEOUT_SECONDS", raising=False)
+
+    desktop = DesktopSettings.from_env(load_local_env=False)
+
+    assert desktop.gateway_timeout_seconds == 35.0
+    assert (
+        desktop.gateway_timeout_seconds
+        > GatewaySettings().route_timeout_seconds
+    )

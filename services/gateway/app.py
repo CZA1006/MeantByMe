@@ -108,13 +108,23 @@ def create_app(
             raise HTTPException(
                 status_code=504, detail="provider timeout"
             ) from error
-        except (ProviderRequestError, ProviderContractError) as error:
+        except ProviderRequestError as error:
             logger.warning(
-                "provider request failed type=%s",
-                type(error).__name__,
+                "provider_request_failed reason=%s status_code=%s",
+                error.reason,
+                error.status_code,
             )
             raise HTTPException(
                 status_code=502, detail="provider unavailable"
+            ) from error
+        except ProviderContractError as error:
+            logger.warning(
+                "provider_contract_failed code=%s",
+                error.code,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=error.code,
             ) from error
 
     @application.middleware("http")
@@ -145,6 +155,14 @@ def create_app(
             "openagents_configured": bool(
                 active_settings.openagents_api_key
             ),
+        }
+
+    @application.get("/")
+    async def root() -> dict[str, str]:
+        return {
+            "service": "MeantByMe Gateway",
+            "status": "ok",
+            "health": "/v1/health",
         }
 
     @application.post(

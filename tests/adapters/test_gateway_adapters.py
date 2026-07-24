@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from meantbyme.adapters.asr import GatewayASRAdapter
 from meantbyme.adapters.audio import AudioStore
 from meantbyme.adapters.http import GatewayHttpClient
 from meantbyme.adapters.intent import GatewayIntentAdapter
 from meantbyme.adapters.tts import GatewayTTSAdapter
-from meantbyme.core.domain import ConfirmedContext
+from meantbyme.core.domain import ASRResult, ConfirmedContext
 from meantbyme.core.runtime.evidence import build_transcript_evidence
 from tests.helpers.stub_gateway import (
     StubGatewayState,
@@ -104,11 +106,12 @@ def test_invalid_intent_json_uses_template_fallback(tmp_path: Path) -> None:
         evidence = build_transcript_evidence(
             _asr(gateway.base_url, _audio_store(tmp_path)).transcribe(AUDIO_ID)
         )
-        proposal = GatewayIntentAdapter(
+        adapter = GatewayIntentAdapter(
             client=client,
             patient_id=PATIENT_ID,
             session_id=SESSION_ID,
-        ).propose(
+        )
+        proposal = adapter.propose(
             evidence,
             [],
             ConfirmedContext(
@@ -119,6 +122,11 @@ def test_invalid_intent_json_uses_template_fallback(tmp_path: Path) -> None:
 
     assert proposal.requires_confirmation is True
     assert proposal.candidates[0].id == "template-c1"
+    assert adapter.last_fallback_diagnostic is not None
+    assert (
+        adapter.last_fallback_diagnostic.reason
+        == "gateway_invalid_response"
+    )
     assert len(proposal.candidates) == 3
     assert all(
         "plan" in candidate.text.casefold()
@@ -134,7 +142,7 @@ def test_intent_timeout_uses_template_fallback(tmp_path: Path) -> None:
         evidence = build_transcript_evidence(
             _asr(gateway.base_url, store).transcribe(AUDIO_ID)
         )
-        proposal = GatewayIntentAdapter(
+        adapter = GatewayIntentAdapter(
             client=GatewayHttpClient(
                 gateway.base_url,
                 timeout_seconds=0.02,
@@ -143,10 +151,50 @@ def test_intent_timeout_uses_template_fallback(tmp_path: Path) -> None:
             patient_id=PATIENT_ID,
             session_id=SESSION_ID,
             situation="A friend asked about tomorrow.",
-        ).propose(evidence, [], ConfirmedContext())
+        )
+        proposal = adapter.propose(evidence, [], ConfirmedContext())
 
     assert proposal.requires_confirmation is True
     assert proposal.candidates[0].id == "template-c1"
+    assert adapter.last_fallback_diagnostic is not None
+    assert adapter.last_fallback_diagnostic.reason == "gateway_timeout"
+
+
+def test_invalid_intent_schema_records_validation_fallback(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    class InvalidProposalClient:
+        def post_json(self, path, payload):
+            del path, payload
+            return {"requires_confirmation": True, "candidates": []}
+
+    evidence = build_transcript_evidence(
+        [
+            ASRResult(
+                provider="test-asr",
+                transcript="I don't tomorrow",
+                language="en",
+                segments=[],
+                status="success",
+            )
+        ]
+    )
+    adapter = GatewayIntentAdapter(
+        client=InvalidProposalClient(),
+        patient_id=PATIENT_ID,
+        session_id=SESSION_ID,
+    )
+
+    proposal = adapter.propose(evidence, [], ConfirmedContext())
+
+    assert proposal.candidates[0].id == "template-c1"
+    assert adapter.last_fallback_diagnostic is not None
+    assert (
+        adapter.last_fallback_diagnostic.reason
+        == "proposal_validation_failed"
+    )
+    assert "proposal_validation_failed" in caplog.text
+    assert "I don't tomorrow" not in caplog.text
 
 
 def test_secondary_missing_returns_single_source(tmp_path: Path) -> None:

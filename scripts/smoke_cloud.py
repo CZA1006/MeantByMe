@@ -34,7 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Tomorrow is Sunday."
         ),
     )
-    parser.add_argument("--timeout", type=float, default=30.0)
+    parser.add_argument("--timeout", type=float, default=35.0)
     return parser
 
 

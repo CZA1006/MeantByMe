@@ -14,10 +14,17 @@ The development server binds to `127.0.0.1:8000`. It does not log request
 bodies, headers, raw audio, candidate text, memory content, or provider
 responses.
 
+`GET /` returns a minimal public service status for deployment previews, and
+`GET /v1/health` returns provider configuration booleans without secret values.
+
 Set `GATEWAY_TOKEN` in `.env` for both the gateway and cloud-mode desktop
 client. Protected provider routes fail closed with `503` when the token is
 unset, while `GET /v1/health` remains public. Callers that bypass the desktop
 client must send `X-Gateway-Token: <token>`.
+
+The desktop timeout defaults to 35 seconds, slightly above the gateway's
+30-second route budget. This lets the gateway return a provider result or its
+own timeout response instead of the desktop prematurely entering fallback.
 
 The gateway applies a process-local fixed-window limit per client IP. This is
 appropriate for one Uvicorn worker. Multiple workers or Zeabur replicas require

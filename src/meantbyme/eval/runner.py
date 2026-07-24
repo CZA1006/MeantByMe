@@ -181,7 +181,7 @@ def _build_providers(
     audio_store.import_wav(audio_path, audio_id=sample.sample_id)
     client = GatewayHttpClient(
         base_url,
-        timeout_seconds=20.0,
+        timeout_seconds=desktop_settings.gateway_timeout_seconds,
         max_attempts=3,
         backoff_seconds=0.25,
         token=desktop_settings.gateway_token,

@@ -1,8 +1,17 @@
 from __future__ import annotations
 
+import logging
+from dataclasses import dataclass
+
 from pydantic import ValidationError
 
-from meantbyme.adapters.http import GatewayError, GatewayHttpClient
+from meantbyme.adapters.http import (
+    GatewayError,
+    GatewayHTTPError,
+    GatewayHttpClient,
+    GatewayInvalidResponse,
+    GatewayTimeout,
+)
 from meantbyme.adapters.intent.template import TemplateIntentAdapter
 from meantbyme.core.domain import (
     ConfirmedContext,
@@ -11,6 +20,15 @@ from meantbyme.core.domain import (
     TranscriptEvidence,
 )
 from meantbyme.core.personalization.text import normalize, tokenize
+
+
+logger = logging.getLogger("meantbyme.intent.gateway")
+
+
+@dataclass(frozen=True)
+class IntentFallbackDiagnostic:
+    reason: str
+    status_code: int | None = None
 
 
 class GatewayIntentAdapter:
@@ -28,6 +46,7 @@ class GatewayIntentAdapter:
         self._session_id = session_id
         self._situation = situation
         self._fallback = fallback or TemplateIntentAdapter()
+        self.last_fallback_diagnostic: IntentFallbackDiagnostic | None = None
 
     def propose(
         self,
@@ -36,6 +55,7 @@ class GatewayIntentAdapter:
         confirmed_context: ConfirmedContext,
         situation: str | None = None,
     ) -> IntentProposal:
+        self.last_fallback_diagnostic = None
         effective_situation = (
             situation if situation is not None else self._situation
         )
@@ -73,13 +93,59 @@ class GatewayIntentAdapter:
             )
             self._validate_contract(proposal, confirmed_context)
             return proposal
-        except (GatewayError, ValidationError, ValueError, TypeError):
-            return self._fallback.propose(
-                evidence,
-                memories,
-                confirmed_context,
-                effective_situation,
+        except GatewayTimeout:
+            diagnostic = IntentFallbackDiagnostic("gateway_timeout")
+        except GatewayHTTPError as error:
+            diagnostic = IntentFallbackDiagnostic(
+                "gateway_http_error",
+                status_code=error.status_code,
             )
+        except GatewayInvalidResponse:
+            diagnostic = IntentFallbackDiagnostic(
+                "gateway_invalid_response"
+            )
+        except GatewayError:
+            diagnostic = IntentFallbackDiagnostic("gateway_unavailable")
+        except ValidationError:
+            diagnostic = IntentFallbackDiagnostic(
+                "proposal_validation_failed"
+            )
+        except TypeError:
+            diagnostic = IntentFallbackDiagnostic(
+                "proposal_validation_failed"
+            )
+        except ValueError:
+            diagnostic = IntentFallbackDiagnostic(
+                "proposal_contract_failed"
+            )
+        return self._use_fallback(
+            diagnostic,
+            evidence,
+            memories,
+            confirmed_context,
+            effective_situation,
+        )
+
+    def _use_fallback(
+        self,
+        diagnostic: IntentFallbackDiagnostic,
+        evidence: TranscriptEvidence,
+        memories: list[MemoryItem],
+        confirmed_context: ConfirmedContext,
+        situation: str | None,
+    ) -> IntentProposal:
+        self.last_fallback_diagnostic = diagnostic
+        logger.warning(
+            "intent_fallback reason=%s status_code=%s",
+            diagnostic.reason,
+            diagnostic.status_code,
+        )
+        return self._fallback.propose(
+            evidence,
+            memories,
+            confirmed_context,
+            situation,
+        )
 
     @staticmethod
     def _validate_contract(

@@ -21,7 +21,14 @@ from services.gateway.provider_http import (
 
 
 class ProviderContractError(RuntimeError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "provider_contract_error",
+    ) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 class CloudProviderService:
@@ -125,12 +132,19 @@ class CloudProviderService:
             proposal = IntentProposal.model_validate(proposal_payload)
         except ValidationError as error:
             raise ProviderContractError(
-                "Intent response failed domain validation"
+                "Intent response failed domain validation",
+                code="intent_domain_validation_failed",
             ) from error
         if not proposal.requires_confirmation:
-            raise ProviderContractError("Intent response skipped confirmation")
+            raise ProviderContractError(
+                "Intent response skipped confirmation",
+                code="intent_confirmation_contract_failed",
+            )
         if not 2 <= len(proposal.candidates) <= 3:
-            raise ProviderContractError("Intent response candidate count invalid")
+            raise ProviderContractError(
+                "Intent response candidate count invalid",
+                code="intent_candidate_count_invalid",
+            )
         return proposal.model_dump(mode="json")
 
     def synthesize(
@@ -273,7 +287,8 @@ class CloudProviderService:
         content = payload.get("content")
         if not isinstance(content, list):
             raise ProviderContractError(
-                "StepFun response has no content blocks"
+                "StepFun response has no content blocks",
+                code="intent_provider_response_invalid",
             )
         text_blocks = [
             block.get("text")
@@ -283,7 +298,10 @@ class CloudProviderService:
             and isinstance(block.get("text"), str)
         ]
         if not text_blocks:
-            raise ProviderContractError("StepFun response text is empty")
+            raise ProviderContractError(
+                "StepFun response text is empty",
+                code="intent_provider_response_invalid",
+            )
         return "".join(text_blocks)
 
     @staticmethod
@@ -362,13 +380,22 @@ def _extract_json_text(text: str) -> dict[str, Any]:
     start = stripped.find("{")
     end = stripped.rfind("}")
     if start < 0 or end < start:
-        raise ProviderContractError("Intent response contains no JSON object")
+        raise ProviderContractError(
+            "Intent response contains no JSON object",
+            code="intent_json_invalid",
+        )
     try:
         payload = json.loads(stripped[start : end + 1])
     except json.JSONDecodeError as error:
-        raise ProviderContractError("Intent response JSON is invalid") from error
+        raise ProviderContractError(
+            "Intent response JSON is invalid",
+            code="intent_json_invalid",
+        ) from error
     if not isinstance(payload, dict):
-        raise ProviderContractError("Intent response JSON must be an object")
+        raise ProviderContractError(
+            "Intent response JSON must be an object",
+            code="intent_json_invalid",
+        )
     return payload
 
 

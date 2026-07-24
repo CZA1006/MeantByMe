@@ -39,7 +39,7 @@ class GatewayHttpClient:
         self,
         base_url: str,
         *,
-        timeout_seconds: float = 8.0,
+        timeout_seconds: float = 35.0,
         max_attempts: int = 2,
         backoff_seconds: float = 0.1,
         token: str = "",
