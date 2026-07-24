@@ -23,6 +23,8 @@ const appState = {
   recorder: null,
   recordingStartedAt: 0,
   recordingTimer: null,
+  recordingAutoStopStarted: false,
+  maxAudioSeconds: 20,
   audioUrls: [],
   readbackCompleted: false,
 };
@@ -108,6 +110,7 @@ async function initialize() {
   try {
     const health = await (await fetch("/api/health")).json();
     ui.mode.textContent = health.mode.toUpperCase();
+    appState.maxAudioSeconds = Number(health.max_audio_seconds) || 20;
     if (health.demo_access_configured && !appState.demoToken) {
       ui.accessDialog.showModal();
       ui.accessCode.focus();
@@ -259,9 +262,9 @@ async function useWavFile(event) {
   const [file] = event.target.files;
   if (!file) return;
   try {
+    await uploadAudio(file);
     await sendCommand("start_capture");
     if (appState.model.session.stage !== "capturing") return;
-    await uploadAudio(file);
     await sendCommand("stop_capture");
   } catch (error) {
     setStatus(error.message);
@@ -276,7 +279,7 @@ function renderCapturing() {
       <span class="record-dot" aria-hidden="true"></span>
       <div>
         <span id="capture-time" class="capture-time">00:00</span>
-        <span class="capture-caption">Microphone capture remains unconfirmed evidence.</span>
+        <span class="capture-caption">Microphone capture remains unconfirmed evidence and stops at ${escapeHtml(appState.maxAudioSeconds)} seconds.</span>
       </div>
     </div>
     <div class="action-grid">
@@ -674,6 +677,7 @@ function setInteractionDisabled(disabled) {
 
 function startRecordingTimer() {
   stopRecordingTimer();
+  appState.recordingAutoStopStarted = false;
   appState.recordingTimer = window.setInterval(updateCaptureClock, 250);
 }
 
@@ -687,6 +691,15 @@ function updateCaptureClock() {
   if (!target || !appState.recordingStartedAt) return;
   const seconds = Math.floor((Date.now() - appState.recordingStartedAt) / 1000);
   target.textContent = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  if (
+    seconds >= appState.maxAudioSeconds
+    && appState.recorder
+    && !appState.recordingAutoStopStarted
+  ) {
+    appState.recordingAutoStopStarted = true;
+    setStatus(`Maximum ${appState.maxAudioSeconds}-second recording reached.`);
+    void stopMicrophone();
+  }
 }
 
 function clearAudioUrls() {

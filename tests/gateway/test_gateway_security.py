@@ -11,6 +11,7 @@ from meantbyme.config import DesktopSettings
 from services.gateway.app import create_app
 from services.gateway.config import GatewaySettings
 from services.gateway.providers import ProviderContractError
+from tests.helpers.stub_gateway import wav_bytes
 
 
 TOKEN = "test-gateway-token"
@@ -28,6 +29,20 @@ INTENT_PAYLOAD = {
 class RecordingGatewayProvider:
     def __init__(self) -> None:
         self.intent_calls: list[dict[str, Any]] = []
+        self.asr_calls = 0
+
+    def transcribe(
+        self, wav: bytes, *, language_hint: str | None
+    ) -> dict[str, Any]:
+        del wav
+        self.asr_calls += 1
+        return {
+            "provider": "recording",
+            "transcript": "test",
+            "language": language_hint,
+            "segments": [],
+            "status": "success",
+        }
 
     def propose_intent(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.intent_calls.append(payload)
@@ -118,6 +133,36 @@ def test_correct_token_reaches_provider() -> None:
     assert response.status_code == 200
     assert response.json() == {"provider": "recording"}
     assert provider.intent_calls == [INTENT_PAYLOAD]
+
+
+def test_asr_duration_limit_rejects_before_provider_call() -> None:
+    provider = RecordingGatewayProvider()
+    client = _client(provider=provider)
+    headers = {
+        "X-Gateway-Token": TOKEN,
+        "X-Patient-Id": "patient-test",
+        "X-Session-Id": "session-test",
+        "X-Language-Hint": "zh",
+        "Content-Type": "audio/wav",
+    }
+
+    accepted = client.post(
+        "/v1/asr/primary",
+        headers=headers,
+        content=wav_bytes(duration_seconds=20.0),
+    )
+    rejected = client.post(
+        "/v1/asr/primary",
+        headers=headers,
+        content=wav_bytes(duration_seconds=20.01),
+    )
+
+    assert accepted.status_code == 200
+    assert rejected.status_code == 413
+    assert rejected.json()["detail"] == (
+        "ASR audio must be 20 seconds or shorter"
+    )
+    assert provider.asr_calls == 1
 
 
 def test_unconfigured_gateway_fails_closed_but_health_is_public() -> None:

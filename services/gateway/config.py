@@ -16,6 +16,7 @@ class GatewaySettings:
     intent_model: str = "step-explore"
     provider_timeout_seconds: float = 20.0
     route_timeout_seconds: float = 30.0
+    max_asr_audio_seconds: float = 20.0
     provider_max_attempts: int = 3
     retry_backoff_seconds: float = 0.5
     neutral_voice: str = "cixingnansheng"
@@ -54,6 +55,10 @@ class GatewaySettings:
             ),
             route_timeout_seconds=float(
                 os.getenv("ROUTE_TIMEOUT_SECONDS", "30")
+            ),
+            max_asr_audio_seconds=max(
+                0.1,
+                float(os.getenv("GATEWAY_MAX_ASR_AUDIO_SECONDS", "20")),
             ),
             provider_max_attempts=max(
                 3, int(os.getenv("PROVIDER_MAX_ATTEMPTS", "3"))

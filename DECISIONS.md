@@ -171,7 +171,7 @@ CREATE TABLE receipts (
 
 **冲突(事实):** [docs/07_MODELS_AND_INTEGRATIONS.md:127](docs/07_MODELS_AND_INTEGRATIONS.md) 令 LLM 做风险分类;不变量 8 要求高风险走更严格确认。
 
-**决定:** 高风险闸门由 `core/policies/risk.py` 的确定性词表/规则拥有;LLM 的 `risk_level` 仅作建议,**只能加严、不能放松**。
+**决定:** 高风险闸门由 `core/policies/risk.py` 的确定性词表/规则拥有;LLM 的 `risk_level` 仅作建议,**只能加严、不能放松**。英文词项按单词边界匹配;中文医疗、法律、金融、紧急与关系词项按确定性子串匹配,避免 CJK 无单词边界导致漏判。
 
 ```python
 def classify_risk(text: str, llm_hint: str | None) -> RiskLevel:
@@ -434,3 +434,4 @@ agent/runtime 的 D10–D19。全部已冻结。
 | 2026-07-23 | D17 | Gold/Silver 排序权重与 Memory 来源追踪规则冻结 | Nick 确认 |
 | 2026-07-24 | D18 | 冻结 CJK 分词、槽位、locked-context 与 Memory overlap 等价规则 | Nick 确认 |
 | 2026-07-24 | D19 | 冻结 Context-Memory 分级存储、独立检索与自动 situation 召回 | Nick 确认 |
+| 2026-07-24 | D5/D16 | 补齐中文高风险确定性词表与 strict 确认覆盖 | Nick |

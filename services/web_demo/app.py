@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
-from meantbyme.adapters.audio import AudioStoreError
+from meantbyme.adapters.audio import AudioStore, AudioStoreError
 from meantbyme.core.domain import (
     ConfirmationMethod,
     PatientCommand,
@@ -104,6 +104,7 @@ def create_app(
             "notice": SIMULATED_NOTICE,
             "gateway_configured": bool(active_settings.gateway_token),
             "demo_access_configured": bool(active_settings.demo_token),
+            "max_audio_seconds": active_settings.max_audio_seconds,
         }
 
     @application.post(
@@ -140,6 +141,16 @@ def create_app(
         if not wav_bytes or len(wav_bytes) > active_settings.max_audio_bytes:
             raise HTTPException(status_code=413, detail="invalid audio size")
         try:
+            duration_seconds = AudioStore.duration_seconds(wav_bytes)
+            if duration_seconds > active_settings.max_audio_seconds:
+                raise HTTPException(
+                    status_code=413,
+                    detail=(
+                        "audio must be "
+                        f"{active_settings.max_audio_seconds:g} "
+                        "seconds or shorter"
+                    ),
+                )
             audio_id = await asyncio.to_thread(session.put_audio, wav_bytes)
         except AudioStoreError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error

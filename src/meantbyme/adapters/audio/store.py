@@ -4,11 +4,17 @@ import audioop
 import io
 import os
 import re
+import struct
 import wave
 from pathlib import Path
 
 
 _AUDIO_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_WAVE_FORMAT_PCM = 0x0001
+_WAVE_FORMAT_EXTENSIBLE = 0xFFFE
+_PCM_SUBFORMAT_GUID = bytes.fromhex(
+    "0100000000001000800000aa00389b71"
+)
 
 
 class AudioStoreError(ValueError):
@@ -83,6 +89,16 @@ class AudioStore:
         if path.exists():
             path.unlink()
 
+    @classmethod
+    def duration_seconds(cls, wav_bytes: bytes) -> float:
+        channels, sample_width, sample_rate, frames = cls._inspect_wav(
+            wav_bytes
+        )
+        bytes_per_frame = channels * sample_width
+        if sample_rate <= 0 or bytes_per_frame <= 0:
+            raise AudioStoreError("Invalid WAV format")
+        return len(frames) / bytes_per_frame / sample_rate
+
     def path_for(self, audio_id: str) -> Path:
         if not _AUDIO_ID.fullmatch(audio_id):
             raise AudioStoreError("audio_id contains unsupported characters")
@@ -109,8 +125,9 @@ class AudioStore:
 
     @staticmethod
     def _inspect_wav(wav_bytes: bytes) -> tuple[int, int, int, bytes]:
+        readable_wav = AudioStore._canonicalize_extensible_pcm(wav_bytes)
         try:
-            with wave.open(io.BytesIO(wav_bytes), "rb") as reader:
+            with wave.open(io.BytesIO(readable_wav), "rb") as reader:
                 if reader.getcomptype() != "NONE":
                     raise AudioStoreError("Compressed WAV input is unsupported")
                 channels = reader.getnchannels()
@@ -122,6 +139,54 @@ class AudioStore:
         if sample_width not in {1, 2, 3, 4}:
             raise AudioStoreError("Unsupported PCM sample width")
         return channels, sample_width, sample_rate, frames
+
+    @staticmethod
+    def _canonicalize_extensible_pcm(wav_bytes: bytes) -> bytes:
+        if (
+            len(wav_bytes) < 12
+            or wav_bytes[:4] != b"RIFF"
+            or wav_bytes[8:12] != b"WAVE"
+        ):
+            return wav_bytes
+
+        offset = 12
+        while offset + 8 <= len(wav_bytes):
+            chunk_id = wav_bytes[offset : offset + 4]
+            chunk_size = struct.unpack_from("<I", wav_bytes, offset + 4)[0]
+            chunk_start = offset + 8
+            chunk_end = chunk_start + chunk_size
+            if chunk_end > len(wav_bytes):
+                raise AudioStoreError("Invalid WAV data")
+            if chunk_id == b"fmt ":
+                if chunk_size < 16:
+                    raise AudioStoreError("Invalid WAV format")
+                format_tag = struct.unpack_from(
+                    "<H", wav_bytes, chunk_start
+                )[0]
+                if format_tag != _WAVE_FORMAT_EXTENSIBLE:
+                    return wav_bytes
+                if chunk_size < 40:
+                    raise AudioStoreError("Invalid extensible WAV format")
+                extension_size = struct.unpack_from(
+                    "<H", wav_bytes, chunk_start + 16
+                )[0]
+                subformat = wav_bytes[
+                    chunk_start + 24 : chunk_start + 40
+                ]
+                if (
+                    extension_size < 22
+                    or subformat != _PCM_SUBFORMAT_GUID
+                ):
+                    raise AudioStoreError(
+                        "Only PCM extensible WAV input is supported"
+                    )
+                canonical = bytearray(wav_bytes)
+                struct.pack_into(
+                    "<H", canonical, chunk_start, _WAVE_FORMAT_PCM
+                )
+                return bytes(canonical)
+            offset = chunk_end + (chunk_size % 2)
+        return wav_bytes
 
     @staticmethod
     def _encode_wav(frames: bytes, *, sample_rate: int) -> bytes:

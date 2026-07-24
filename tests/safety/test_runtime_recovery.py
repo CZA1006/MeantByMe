@@ -68,6 +68,29 @@ class HighRiskIntent(MockIntentAdapter):
         )
 
 
+class ChineseMedicalIntent(MockIntentAdapter):
+    def propose(
+        self, evidence, memories, confirmed_context, situation=None
+    ):
+        proposal = super().propose(
+            evidence, memories, confirmed_context, situation
+        )
+        medical = ExpressionCandidate(
+            id="chinese-medical-candidate",
+            text="我想预约明天的治疗。",
+            language="zh",
+            patient_supported_spans=[],
+            ai_added_spans=["预约明天的治疗"],
+            memory_support_ids=[],
+            ranking_reasons=["simulated Chinese medical expression"],
+            risk_level=RiskLevel.ORDINARY,
+            source_level="L2",
+        )
+        return proposal.model_copy(
+            update={"candidates": [medical, *proposal.candidates[:2]]}
+        )
+
+
 def test_high_risk_expression_sets_strict_final_review() -> None:
     harness = make_harness(with_memory=False, intent=HighRiskIntent())
     drive_to_route(harness)
@@ -89,6 +112,24 @@ def test_high_risk_expression_sets_strict_final_review() -> None:
         final_confirm(harness)
     final_confirm(harness, strict=True)
     assert harness.runtime.session.stage is SessionStage.COMPLETED
+
+
+def test_chinese_medical_expression_sets_strict_final_review() -> None:
+    harness = make_harness(
+        with_memory=False,
+        intent=ChineseMedicalIntent(),
+    )
+    drive_to_route(harness)
+    send(
+        harness.runtime,
+        PatientCommandType.SELECT_CANDIDATE,
+        payload={"candidate_id": "chinese-medical-candidate"},
+    )
+
+    assert harness.runtime.session.risk_level is RiskLevel.HIGH_RISK
+    assert harness.runtime.session.strict is True
+    with pytest.raises(CommandRejected, match="strict confirmation"):
+        final_confirm(harness)
 
 
 class FailingSearchRepository(SQLiteRepository):

@@ -107,6 +107,7 @@ def test_health_and_page_are_public_but_sessions_require_demo_token(
 
     assert health.status_code == 200
     assert health.json()["simulated"] is True
+    assert health.json()["max_audio_seconds"] == 20.0
     assert DEMO_TOKEN not in health.text
     assert page.status_code == 200
     assert "GATEWAY_TOKEN" not in page.text
@@ -122,6 +123,32 @@ def test_frontend_never_auto_checks_patient_confirmation() -> None:
 
     assert "checkbox.checked = true" not in script
     assert "GATEWAY_TOKEN" not in script
+    assert "recordingAutoStopStarted" in script
+    assert "seconds >= appState.maxAudioSeconds" in script
+
+
+def test_audio_upload_accepts_limit_and_rejects_longer_wav(
+    tmp_path: Path,
+) -> None:
+    with TestClient(create_app(settings=_settings(tmp_path))) as client:
+        created, headers = _create_session(client)
+        session_id = created["session"]["session_id"]
+        exact_limit = client.post(
+            f"/api/sessions/{session_id}/audio",
+            headers={**headers, "Content-Type": "audio/wav"},
+            content=wav_bytes(duration_seconds=20.0),
+        )
+        over_limit = client.post(
+            f"/api/sessions/{session_id}/audio",
+            headers={**headers, "Content-Type": "audio/wav"},
+            content=wav_bytes(duration_seconds=20.01),
+        )
+
+    assert exact_limit.status_code == 200
+    assert over_limit.status_code == 413
+    assert over_limit.json()["detail"] == (
+        "audio must be 20 seconds or shorter"
+    )
 
 
 def test_cloud_mode_fails_closed_without_demo_token(tmp_path: Path) -> None:

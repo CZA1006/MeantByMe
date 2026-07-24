@@ -25,6 +25,9 @@ client must send `X-Gateway-Token: <token>`.
 The desktop timeout defaults to 35 seconds, slightly above the gateway's
 30-second route budget. This lets the gateway return a provider result or its
 own timeout response instead of the desktop prematurely entering fallback.
+ASR requests are limited to 20 seconds by default
+(`GATEWAY_MAX_ASR_AUDIO_SECONDS`) because longer single-request clips can
+exceed the route budget. Long-form audio requires a future chunked ASR path.
 
 The gateway applies a process-local fixed-window limit per client IP. This is
 appropriate for one Uvicorn worker. Multiple workers or Zeabur replicas require

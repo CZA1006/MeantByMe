@@ -19,6 +19,7 @@ class WebDemoSettings:
     voice_profile_id: str = "cixingnansheng"
     audio_store_root: Path = Path(tempfile.gettempdir()) / "meantbyme-web-demo"
     max_audio_bytes: int = 16 * 1024 * 1024
+    max_audio_seconds: float = 20.0
     max_sessions: int = 100
 
     @classmethod
@@ -57,6 +58,10 @@ class WebDemoSettings:
                         str(16 * 1024 * 1024),
                     )
                 ),
+            ),
+            max_audio_seconds=max(
+                0.1,
+                float(os.getenv("WEB_DEMO_MAX_AUDIO_SECONDS", "20")),
             ),
             max_sessions=max(
                 1, int(os.getenv("WEB_DEMO_MAX_SESSIONS", "100"))

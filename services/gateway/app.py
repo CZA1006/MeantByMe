@@ -177,7 +177,10 @@ def create_app(
     ) -> dict[str, Any]:
         del x_patient_id, x_session_id
         wav_bytes = await request.body()
-        _validate_audio(wav_bytes)
+        _validate_audio(
+            wav_bytes,
+            max_duration_seconds=active_settings.max_asr_audio_seconds,
+        )
         return await run_provider(
             active_providers.transcribe,
             wav_bytes,
@@ -240,11 +243,30 @@ def create_app(
     return application
 
 
-def _validate_audio(wav_bytes: bytes) -> None:
+def _validate_audio(
+    wav_bytes: bytes,
+    *,
+    max_duration_seconds: float | None = None,
+) -> None:
     if not wav_bytes or len(wav_bytes) > MAX_AUDIO_BYTES:
         raise HTTPException(status_code=413, detail="invalid audio size")
     if not wav_bytes.startswith(b"RIFF"):
         raise HTTPException(status_code=400, detail="WAV audio required")
+    if max_duration_seconds is None:
+        return
+    try:
+        with wave.open(io.BytesIO(wav_bytes), "rb") as reader:
+            duration = reader.getnframes() / reader.getframerate()
+    except (EOFError, wave.Error, ZeroDivisionError) as error:
+        raise HTTPException(status_code=400, detail="invalid WAV audio") from error
+    if duration > max_duration_seconds:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"ASR audio must be {max_duration_seconds:g} "
+                "seconds or shorter"
+            ),
+        )
 
 
 def _validate_voice_sample(wav_bytes: bytes) -> None:

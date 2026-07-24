@@ -48,6 +48,7 @@ GATEWAY_URL=https://meantbyme.zeabur.app
 GATEWAY_TOKEN=the_gateway_caller_token
 GATEWAY_TIMEOUT_SECONDS=35
 WEB_DEMO_VOICE_PROFILE_ID=cixingnansheng
+WEB_DEMO_MAX_AUDIO_SECONDS=20
 ```
 
 Then run the same module. The user enters `WEB_DEMO_TOKEN` in the browser.
@@ -71,6 +72,7 @@ GATEWAY_TOKEN=<same caller token configured on the gateway>
 GATEWAY_TIMEOUT_SECONDS=35
 GATEWAY_MAX_ATTEMPTS=2
 WEB_DEMO_VOICE_PROFILE_ID=cixingnansheng
+WEB_DEMO_MAX_AUDIO_SECONDS=20
 ```
 
 Do not set `STEPFUN_API_KEY` on the Web Demo service. Only the existing
@@ -84,3 +86,6 @@ After the deployment is healthy:
 4. Verify `GET /api/health`.
 
 Cloud mode fails closed when `WEB_DEMO_TOKEN` or `GATEWAY_TOKEN` is missing.
+Microphone capture stops automatically at 20 seconds, and the BFF rejects
+longer uploaded WAV files before they can consume gateway capacity. PCM
+`WAVE_FORMAT_EXTENSIBLE` input is normalized by the local AudioStore.
