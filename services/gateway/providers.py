@@ -53,24 +53,19 @@ class CloudProviderService:
             self._require_secret(self.settings.stepfun_api_key, "StepFun")
             pcm_bytes = _wav_to_pcm(wav_bytes)
             request_language = language_hint or "en"
+            audio_data, audio_format = _encode_asr_audio(pcm_bytes)
             response = self._client.post_json(
                 f"{self.settings.stepfun_base_url}/audio/asr/sse",
                 {
                     "audio": {
-                        "data": base64.b64encode(pcm_bytes).decode("ascii"),
+                        "data": audio_data,
                         "input": {
                             "transcription": {
                                 "model": "stepaudio-2.5-asr",
                                 "language": request_language,
                                 "enable_itn": True,
                             },
-                            "format": {
-                                "type": "pcm",
-                                "codec": "pcm_s16le",
-                                "rate": 16_000,
-                                "bits": 16,
-                                "channel": 1,
-                            },
+                            "format": audio_format,
                         },
                     }
                 },
@@ -325,6 +320,40 @@ def _wav_to_pcm(wav_bytes: bytes) -> bytes:
     if not pcm_bytes:
         raise ProviderContractError("ASR WAV contains no PCM frames")
     return pcm_bytes
+
+
+def _encode_asr_audio(pcm_bytes: bytes) -> tuple[str, dict[str, Any]]:
+    """Return (base64 audio, StepFun format block) for the ASR request.
+
+    StepFun's asr/sse accepts ogg/mp3/wav/pcm. MP3 is ~8x smaller than raw
+    s16le PCM, which keeps the upload small on throttled egress links (a slow
+    host->StepFun path otherwise makes long clips take tens of seconds). Fall
+    back to raw PCM if the MP3 encoder is unavailable so behaviour is never
+    worse than before.
+    """
+    try:
+        import lameenc
+
+        encoder = lameenc.Encoder()
+        encoder.set_bit_rate(48)
+        encoder.set_in_sample_rate(16_000)
+        encoder.set_channels(1)
+        encoder.set_quality(2)
+        mp3_bytes = encoder.encode(pcm_bytes) + encoder.flush()
+        if mp3_bytes:
+            return base64.b64encode(mp3_bytes).decode("ascii"), {"type": "mp3"}
+    except Exception:  # pragma: no cover - encoder missing/fails -> PCM fallback
+        pass
+    return (
+        base64.b64encode(pcm_bytes).decode("ascii"),
+        {
+            "type": "pcm",
+            "codec": "pcm_s16le",
+            "rate": 16_000,
+            "bits": 16,
+            "channel": 1,
+        },
+    )
 
 
 def _parse_asr_sse(response: ProviderResponse) -> str:

@@ -177,20 +177,24 @@ def test_stepfun_audio_requests_map_documented_fields() -> None:
         "transcription"
     ]
     audio_format = client.calls[0]["payload"]["audio"]["input"]["format"]
-    pcm = base64.b64decode(client.calls[0]["payload"]["audio"]["data"])
+    audio_bytes = base64.b64decode(client.calls[0]["payload"]["audio"]["data"])
     assert transcription == {
         "model": "stepaudio-2.5-asr",
         "language": "en",
         "enable_itn": True,
     }
-    assert audio_format == {
-        "type": "pcm",
-        "codec": "pcm_s16le",
-        "rate": 16_000,
-        "bits": 16,
-        "channel": 1,
-    }
-    assert pcm and not pcm.startswith(b"RIFF")
+    # MP3 (compressed, ~8x smaller) is preferred to keep the upload small on
+    # throttled egress; PCM is the fallback when the encoder is unavailable.
+    assert audio_format["type"] in {"mp3", "pcm"}
+    if audio_format["type"] == "pcm":
+        assert audio_format == {
+            "type": "pcm",
+            "codec": "pcm_s16le",
+            "rate": 16_000,
+            "bits": 16,
+            "channel": 1,
+        }
+    assert audio_bytes and not audio_bytes.startswith(b"RIFF")
     assert client.calls[1]["url"].endswith("/audio/speech")
     assert client.calls[1]["payload"] == {
         "model": "stepaudio-2.5-tts",
