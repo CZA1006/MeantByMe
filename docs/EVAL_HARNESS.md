@@ -21,9 +21,11 @@
   "language": "en",
   "category": "fragmented",
   "patient_id": "david_demo",
+  "pair_id": "tomorrow_ambiguity",
 
   "intended_expression": "I don't want to go tomorrow.",
   "stable_fragments": ["I", "don't", "tomorrow"],
+  "situation": "A friend asked if he wants to go out tomorrow. Tomorrow is Sunday.",
   "acceptable_candidates": [
     "I don't want to go tomorrow.",
     "I do not want to go tomorrow."
@@ -47,6 +49,8 @@
 - `asr_fixture` 驱动 mock/replay 模式的证据抽取;cloud 模式用真实音频(`audio_id` → `AudioStore`)并忽略此字段。
 - `seed_memories` 预置该患者的 verified 记忆(Gold/Silver),用于测 memory 影响。
 - `expected_behavior ∈ {candidates, category_clarification, final_review, switch_input}` 用于测 abstention/routing。
+- **`situation`** 情景上下文(谁在问、问什么、日历事实),随意图请求传入用于消歧。
+- **`pair_id`** 把「相同残缺输入、不同情景 → 不同正确答案」的样本配成一对,用于 Situation Sensitivity 指标(见下)。**这是本产品最核心的能力证明**:同样的 `"I don't … tomorrow"`,朋友约出门 vs 护士问是否继续治疗,正确表达完全不同。
 
 ## 2. 指标定义
 
@@ -61,6 +65,7 @@
 | **Unsupported Completion Rate** | AI 新增 span 中缺音频/上下文/verified-memory 支持的比例 | 逐 `ai_added_spans` 检查是否有证据来源 | 🟡 目标 ≤ 0.20 |
 | **Clarification Rounds** | 完成表达所需患者动作数 | 计数该样本的 `PATIENT_SELECTION_RECEIVED` + 澄清轮 | 🟡 追踪(越低越好) |
 | **Memory-assisted Rank Improvement** | 开/关患者 Memory 时正确候选排名改善 | 同样本跑两次(with/without seed_memories),比较 rank | 🟡 `memory_expected_to_help` 样本须 ≥ 0 |
+| **Situation Sensitivity** | 相同残缺输入、不同情景时,是否给出情景对应的正确表达 | 对每个 `pair_id`:两条样本各自的 top-1(或 top-3 命中)是否分别匹配各自的 `acceptable_candidates`,且**不互相串** | 🟡 目标 ≥ 0.85 |
 | **Abstention Behavior** | 证据不足时是否澄清/降级/停止而非自信猜测 | 高不确定样本的实际 route == `expected_behavior` | 🟡 目标 ≥ 0.90 |
 | **Time to Expression** | 录音开始到授权输出耗时 | 仅 cloud/live 有意义;mock 记为 N/A | 🟡 仅 cloud 追踪 |
 
@@ -127,6 +132,7 @@ harness 扮演患者推进 runtime(D14 禁自动选,所以必须由 harness 代�
 | Top-3 Coverage | ≥ 0.80 | 🟡 目标 |
 | Fragment Recall | ≥ 0.95 | 🟡 目标 |
 | Unsupported Completion Rate | ≤ 0.20 | 🟡 目标 |
+| Situation Sensitivity | ≥ 0.85 | 🟡 目标 |
 | Abstention Accuracy | ≥ 0.90 | 🟡 目标 |
 | Memory Rank Improvement | 相关样本 ≥ 0 | 🟡 目标 |
 
