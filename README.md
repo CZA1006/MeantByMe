@@ -101,10 +101,19 @@ See [docs/STATUS.md](docs/STATUS.md) for the full done / not-done breakdown.
 ./.venv/bin/python -m meantbyme --mode cloud \
     --audio path/to/speech.wav \
     --situation "A friend asked if he wants to go out tomorrow. Tomorrow is Sunday."
+
+# browser interaction demo (mock by default; no network)
+./.venv/bin/python -m services.web_demo
+# open http://127.0.0.1:8081
 ```
 
 Modes: `mock` (deterministic fixtures), `cloud` (gateway-backed StepFun), `fallback`
 (degraded/local). Every mode ends at `completed` with **Unauthorized Voice Rate = 0**.
+
+The browser demo is a server-side Runtime facade, not a static client that calls
+the model gateway directly. See
+[services/web_demo/README.md](services/web_demo/README.md) for its security
+boundary and Zeabur deployment.
 
 ## Documentation
 
@@ -125,7 +134,7 @@ Modes: `mock` (deterministic fixtures), `cloud` (gateway-backed StepFun), `fallb
 
 ### Working documents
 
-- [Frozen decisions D1–D17](DECISIONS.md) — the single source of truth for architecture/behavior decisions
+- [Frozen decisions D1–D19](DECISIONS.md) — the single source of truth for architecture/behavior decisions
 - [Project status (done / not done)](docs/STATUS.md)
 - [Model backend plan (sponsor coverage + billing)](docs/MODEL_BACKEND_PLAN.md)
 - [Milestone 1 brief](docs/CODEX_IMPLEMENTATION_BRIEF.md) · [Milestone 2 brief](docs/CODEX_M2_BRIEF.md) · [Step Plan gateway spec](docs/CODEX_GATEWAY_STEPPLAN_SPEC.md)

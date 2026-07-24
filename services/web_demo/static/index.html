@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>MeantByMe Demo</title>
+    <link rel="stylesheet" href="/assets/styles.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#decision">Skip to current decision</a>
+    <header class="app-header">
+      <div class="brand-block">
+        <div class="brand-mark" aria-hidden="true">M</div>
+        <div>
+          <strong>MeantByMe</strong>
+          <span>Completed with AI. Meant by me.</span>
+        </div>
+      </div>
+      <div class="header-status">
+        <span id="mode-badge" class="mode-badge">MOCK</span>
+        <span id="voice-status" class="voice-status">Voice blocked</span>
+      </div>
+    </header>
+
+    <div class="simulation-notice" role="note">
+      Simulated data. Not a clinical accuracy claim.
+    </div>
+
+    <main class="app-shell">
+      <section class="patient-workspace" aria-labelledby="stage-title">
+        <div class="progress-row" aria-label="Expression progress">
+          <span id="progress-label">Ready</span>
+          <div class="progress-track" aria-hidden="true">
+            <span id="progress-value"></span>
+          </div>
+        </div>
+
+        <div id="decision" class="decision-surface" aria-live="polite">
+          <div class="loading-state">
+            <span class="activity-indicator" aria-hidden="true"></span>
+            <p>Starting simulated session…</p>
+          </div>
+        </div>
+
+        <div id="universal-controls" class="universal-controls" aria-label="Session controls"></div>
+        <p id="status-message" class="status-message" role="status" aria-live="polite"></p>
+      </section>
+
+      <aside class="trace-panel" aria-labelledby="trace-heading">
+        <div class="trace-heading-row">
+          <div>
+            <span class="eyebrow">Memory &amp; Decision Trace</span>
+            <h2 id="trace-heading">Verifiable events</h2>
+          </div>
+          <span id="trace-count" class="trace-count">0</span>
+        </div>
+        <div id="trace-list" class="trace-list">
+          <p class="empty-trace">Events will appear as the session advances.</p>
+        </div>
+      </aside>
+    </main>
+
+    <dialog id="access-dialog" class="access-dialog">
+      <form id="access-form" method="dialog">
+        <span class="eyebrow">Protected demo</span>
+        <h2>Enter access code</h2>
+        <label for="access-code">Demo access code</label>
+        <input id="access-code" name="access-code" type="password" autocomplete="current-password" required>
+        <p id="access-error" class="form-error" role="alert"></p>
+        <button class="button button-primary" type="submit">Open demo</button>
+      </form>
+    </dialog>
+
+    <template id="candidate-template">
+      <article class="candidate-item">
+        <button class="candidate-select" type="button">
+          <span class="candidate-index"></span>
+          <span class="candidate-copy">
+            <strong class="candidate-text"></strong>
+            <span class="candidate-meta"></span>
+          </span>
+          <span class="candidate-arrow" aria-hidden="true">›</span>
+        </button>
+        <div class="candidate-provenance"></div>
+      </article>
+    </template>
+
+    <script src="/assets/app.js" defer></script>
+  </body>
+</html>

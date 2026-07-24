@@ -92,8 +92,15 @@ CREATE TABLE IF NOT EXISTS receipts (
 
 
 class SQLiteRepository:
-    def __init__(self, database: str | Path = ":memory:") -> None:
-        self._connection = sqlite3.connect(str(database))
+    def __init__(
+        self,
+        database: str | Path = ":memory:",
+        *,
+        check_same_thread: bool = True,
+    ) -> None:
+        self._connection = sqlite3.connect(
+            str(database), check_same_thread=check_same_thread
+        )
         self._connection.row_factory = sqlite3.Row
         self._connection.execute("PRAGMA foreign_keys = ON")
         self._connection.executescript(SCHEMA)

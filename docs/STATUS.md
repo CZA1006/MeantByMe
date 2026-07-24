@@ -7,7 +7,7 @@ Last updated: 2026-07-24. Branch of record: `develop` (= `nick/runtime`).
 - ✅ Git repo + remote + branch model (`main` / `develop` / `nick/runtime` / `jiayi/backend` / `an/frontend`)
 - ✅ Python 3.11.8 `.venv` (isolated from system Anaconda)
 - ✅ `pyproject.toml`, `.gitignore`, `.env` (git-ignored) / `.env.example` (placeholders)
-- ✅ Frozen decisions **D1–D17** ([DECISIONS.md](../DECISIONS.md))
+- ✅ Frozen decisions **D1–D19** ([DECISIONS.md](../DECISIONS.md))
 - ✅ Secrets policy enforced (no keys in tracked files; verified by scans)
 
 ## Core runtime — Milestone 1 (deterministic shell) ✅
@@ -53,23 +53,27 @@ Last updated: 2026-07-24. Branch of record: `develop` (= `nick/runtime`).
 ## Model backend / sponsors ✅
 - ✅ StepFun Step Plan (free ¥199) covers ASR + intent + TTS; keys in `.env`
 - ✅ OpenAgents key (fallback); billing/base-URL fully mapped ([MODEL_BACKEND_PLAN.md](MODEL_BACKEND_PLAN.md))
-- ⏸️ HyperAI GPU / Zeabur claimed but not yet used (self-deploy ASR/LLM not needed; Zeabur = future gateway host)
+- ✅ Zeabur gateway deployed and health-checked at `meantbyme.zeabur.app`
+- ⏸️ HyperAI GPU claimed but not used (self-deploy ASR/LLM not currently needed)
 
-## Frontend (An's track) ⬜
+## Frontend
+- ✅ Browser interaction demo (`services/web_demo`) with a server-side Runtime/BFF boundary
+- ✅ Heard-content review, candidates, None of these, Back, final private readback, explicit confirmation, authorized audio, Receipt
+- ✅ Visible Memory & Decision Trace with patient-supported vs AI-added provenance
+- 🟡 Web accessibility baseline: large targets, keyboard reachability, reduced motion, responsive mobile layout; scanning and adjustable timeouts remain P1
+- ⬜ Production web identity, encrypted cloud memory consent, durable patient store
 - ⬜ PySide6 patient UI (large buttons, one-decision screens)
-- ⬜ Memory & Decision Trace view
-- ⬜ Candidate cards / final review / Receipt UI
-- ⬜ Accessibility (keyboard, scanning, timeouts) + Generic-vs-Personalized toggle
 - ⬜ QThread worker model (D7)
 
 ## Backend / deploy (Jiayi's track)
-- ✅ Gateway built (currently we own it, localhost) — Jiayi to harden/deploy
-- ⬜ Gateway deployment to Zeabur (Dockerfile + env secrets)
+- ✅ Gateway deployed to Zeabur with caller token, rate limit, env secrets, and public health route
+- ✅ Dedicated Web Demo BFF/service entry (`Dockerfile.meantbyme-demo`)
+- ⬜ Deploy the Web Demo as a second Zeabur service and bind `meantbyme-demo.zeabur.app`
 - ⏸️ iFLYBUDS Air 2 / viaim earbud capture + private playback
 - ⬜ Remote persistence / backup, production reliability
 
 ## Evaluation & testing
-- ✅ pytest: **73 passing** (unit / safety / integration / gateway contracts / eval); mock+fallback golden paths green, UAR 0
+- ✅ pytest: **96 passing** (unit / safety / integration / gateway / web demo / eval); mock+fallback golden paths green, UAR 0
 - ✅ Eval harness **spec** ([EVAL_HARNESS.md](EVAL_HARNESS.md)) + **implementation** (`src/meantbyme/eval`) with `mock` / `replay` / `cloud` modes, hard gates, high-risk redaction
 - ✅ 26-sample EN/ZH dataset with paired situational samples (`demo/eval/dataset.jsonl`)
 - ✅ **Live baseline (Step Plan, `step-explore`): Situation Sensitivity = 1.00 (2/2)** — identical fragments + differing `situation` each selected their own expected expression, no cross-contamination, EN and ZH
