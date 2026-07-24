@@ -17,7 +17,8 @@ Last updated: 2026-07-24. Branch of record: `develop` (= `nick/runtime`).
 - ✅ Progressive clarification, `None of these`, partial correction via `ConfirmedContext` (D13)
 - ✅ Candidate ranker — Gold > Silver weighting (D14/D17), never auto-selects
 - ✅ Authorization policy — two-layer consent (D15), `AuthorizedExpression` type-gate
-- ✅ Risk gate deterministic (D5) + high-risk strict confirmation (D16)
+- ✅ Risk gate deterministic (D5) + high-risk strict confirmation (D16); **bilingual** — CJK high-risk lexicon (医生/治疗/药物/自杀/转账/合同/律师… ) + emergency codes (110/120), still raise-only
+- ✅ Single-source ASR routing: rich single-ASR evidence routes to MEDIUM (candidates) instead of forcing a generic category question — still requires confirmation, never auto-selects
 - ✅ Expression Receipt + verified-memory writeback (idempotent, D8)
 - ✅ Runtime event trace
 - ✅ SQLite storage with safety constraints (D4): patient-scoped, Gold CHECK, cross-patient blocked
@@ -75,7 +76,8 @@ Last updated: 2026-07-24. Branch of record: `develop` (= `nick/runtime`).
 - ⬜ Remote persistence / backup, production reliability
 
 ## Evaluation & testing
-- ✅ pytest: **96 passing** (unit / safety / integration / gateway / web demo / eval); mock+fallback golden paths green, UAR 0
+- ✅ pytest: **120 passing** (unit / safety / integration / gateway / web demo / eval); mock+fallback golden paths green, UAR 0
+- ✅ **Live public deployment verified (2026-07-24):** gateway `meantbyme.zeabur.app` (health 200, auth-gated — no/wrong token → 401, correct token → real `step-explore` candidates with situation+memory disambiguation) and web demo `meantbyme-demo.zeabur.app` (cloud mode, access-gated — session create without `WEB_DEMO_TOKEN` → 401)
 - ✅ Eval harness **spec** ([EVAL_HARNESS.md](EVAL_HARNESS.md)) + **implementation** (`src/meantbyme/eval`) with `mock` / `replay` / `cloud` modes, hard gates, high-risk redaction
 - ✅ 26-sample EN/ZH dataset with paired situational samples (`demo/eval/dataset.jsonl`)
 - ✅ **Live baseline (Step Plan, `step-explore`): Situation Sensitivity = 1.00 (2/2)** — identical fragments + differing `situation` each selected their own expected expression, no cross-contamination, EN and ZH
