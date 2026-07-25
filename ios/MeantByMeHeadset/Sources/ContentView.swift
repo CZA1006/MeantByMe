@@ -12,18 +12,14 @@ struct ContentView: View {
                         .foregroundColor(.indigo)
                     Text("MeantByMe")
                         .font(.largeTitle.bold())
-                    Text(
-                        companion.mode == .qa
-                            ? "补全残缺问题，AI 回答只在耳机中播放"
-                            : "耳机私密朗读，患者语音确认后再外放"
-                    )
+                    Text("让话说完，让我做主")
                         .multilineTextAlignment(.center)
                         .foregroundColor(.secondary)
                 }
 
                 Picker("会话模式", selection: $companion.mode) {
-                    Text("替患者表达").tag(CompanionMode.expression)
-                    Text("向 AI 提问").tag(CompanionMode.qa)
+                    Text("替你表达").tag(CompanionMode.expression)
+                    Text("与你对话").tag(CompanionMode.qa)
                 }
                 .pickerStyle(.segmented)
                 .disabled(companion.sessionStarted)
@@ -35,7 +31,6 @@ struct ContentView: View {
                     )
                     Label(companion.headsetStatus, systemImage: "dot.radiowaves.left.and.right")
                     Label(companion.sessionStatus, systemImage: "waveform")
-                    Label(companion.safetyStatus, systemImage: "checkmark.shield")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
@@ -110,6 +105,22 @@ struct ContentView: View {
 
                     VStack(spacing: 12) {
                         Button {
+                            companion.finishSpeaking()
+                        } label: {
+                            Label(
+                                "我说完了",
+                                systemImage: "checkmark.circle.fill"
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .disabled(!companion.canFinishSpeaking)
+                        .accessibilityHint(
+                            "结束当前录音并立即交给模型理解处理"
+                        )
+
+                        Button {
                             Task {
                                 await companion.cancelCurrentExpression()
                             }
@@ -142,11 +153,7 @@ struct ContentView: View {
                 }
 
                 Spacer()
-                Text(
-                    companion.mode == .qa
-                        ? "AI 回答只在耳机中播放；不代表患者对外表达，也不写入确认记忆。"
-                        : "候选只在耳机中播放；确认后也只使用系统中性音。"
-                )
+                Text("预测的完整句子将先在耳机中播放，经你确认后再在手机扬声器播放")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -205,6 +212,10 @@ private struct SpeakerVolumeTestView: View {
                     Text("手机扬声器音量")
                         .font(.title2.bold())
                     Text("当前已临时切换到 iPhone 扬声器。拖动滑块，或使用手机音量键调节。")
+                        .multilineTextAlignment(.center)
+                        .foregroundColor(.secondary)
+                    Text("如果当前为静音，系统会先跳过测试语音；调高音量后点击“再次播放测试语音”。")
+                        .font(.footnote)
                         .multilineTextAlignment(.center)
                         .foregroundColor(.secondary)
                 }

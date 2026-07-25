@@ -186,7 +186,19 @@ class DemoProfileRegistry:
         )
 
     def detail(self, profile_ref: str) -> dict[str, Any]:
-        profile, source = self._resolve_with_source(profile_ref)
+        profile, source = self._resolve_with_source(
+            profile_ref,
+            include_expression_mappings=False,
+        )
+        mappings = self._store.list_expression_mappings(
+            profile_ref=profile_ref,
+            profile_id=profile.profile_id,
+        )
+        profile = self._with_expression_mappings(
+            profile_ref,
+            profile,
+            mappings=mappings,
+        )
         return {
             **self._summary(profile_ref, profile, source=source),
             "profile_id": profile.profile_id,
@@ -208,12 +220,7 @@ class DemoProfileRegistry:
                 }
                 for memory in profile.memories
             ],
-            "expression_mapping_count": len(
-                self._store.list_expression_mappings(
-                    profile_ref=profile_ref,
-                    profile_id=profile.profile_id,
-                )
-            ),
+            "expression_mapping_count": len(mappings),
         }
 
     def resolve(self, profile_ref: str) -> ProfileBundle:
@@ -243,7 +250,10 @@ class DemoProfileRegistry:
         )
 
     def _resolve_with_source(
-        self, profile_ref: str
+        self,
+        profile_ref: str,
+        *,
+        include_expression_mappings: bool = True,
     ) -> tuple[ProfileBundle, str]:
         profile = self._builtins.get(profile_ref)
         if profile is not None:
@@ -256,18 +266,29 @@ class DemoProfileRegistry:
                 row.markdown, max_bytes=self._max_profile_bytes
             )
             source = row.source
-        return self._with_expression_mappings(profile_ref, profile), source
+        if include_expression_mappings:
+            profile = self._with_expression_mappings(profile_ref, profile)
+        return profile, source
 
     def _with_expression_mappings(
         self,
         profile_ref: str,
         profile: ProfileBundle,
+        *,
+        mappings: list[ExpressionMapping] | None = None,
     ) -> ProfileBundle:
-        mappings = self._store.list_expression_mappings(
-            profile_ref=profile_ref,
-            profile_id=profile.profile_id,
-            min_confidence=MIN_RETRIEVAL_CONFIDENCE,
-        )
+        if mappings is None:
+            mappings = self._store.list_expression_mappings(
+                profile_ref=profile_ref,
+                profile_id=profile.profile_id,
+                min_confidence=MIN_RETRIEVAL_CONFIDENCE,
+            )
+        else:
+            mappings = [
+                mapping
+                for mapping in mappings
+                if mapping.confidence >= MIN_RETRIEVAL_CONFIDENCE
+            ]
         if not mappings:
             return profile
         payload = profile.model_dump(mode="json")

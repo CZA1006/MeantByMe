@@ -8,7 +8,7 @@ profile. Narrative outside the JSON block is never sent to a provider.
   "schema_version": 1,
   "simulated": true,
   "profile_id": "david_demo",
-  "label": "David (golden-path fixture)",
+  "label": "David",
   "patient": {
     "patient_id": "david_demo",
     "display_name": "David",

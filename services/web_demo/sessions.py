@@ -4,6 +4,7 @@ import hashlib
 import json
 import shutil
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from secrets import token_urlsafe
@@ -51,6 +52,10 @@ from services.web_demo.profile_storage import (
     SQLiteProfileStore,
 )
 from services.web_demo.profiles import DemoProfileRegistry
+from services.web_demo.scripted_demo import (
+    LinYueScriptedASRAdapter,
+    LinYueScriptedIntentAdapter,
+)
 
 
 SIMULATED_NOTICE = "Simulated data. Not a clinical accuracy claim."
@@ -121,6 +126,8 @@ class DemoSession:
         default_factory=dict
     )
     memory_feedback_status: str | None = None
+    scripted_demo: bool = False
+    scripted_processing_delay_seconds: float = 0.0
 
     def close(self) -> None:
         self.repository.close()
@@ -139,7 +146,7 @@ class DemoSession:
                 else f"web-audio-{uuid4().hex}"
             )
             self.audio_store.put_wav_bytes(audio_id, wav_bytes)
-            if primary_transcript:
+            if primary_transcript and not self.scripted_demo:
                 self.asr.submit_primary(
                     audio_id,
                     primary_transcript,
@@ -161,7 +168,7 @@ class DemoSession:
             audio_id = f"earbud-command-{uuid4().hex}"
             self.audio_store.put_wav_bytes(audio_id, wav_bytes)
             try:
-                if self.mode == "mock":
+                if self.mode == "mock" or self.scripted_demo:
                     secondary_transcript = (
                         mock_secondary_transcript
                         if mock_secondary_transcript is not None
@@ -343,6 +350,12 @@ class DemoSession:
         raise ValueError("Cloud mode requires recorded or uploaded WAV audio")
 
     def handle(self, command: PatientCommand) -> dict[str, Any]:
+        if (
+            self.scripted_demo
+            and command.command is PatientCommandType.STOP_CAPTURE
+            and self.scripted_processing_delay_seconds > 0
+        ):
+            time.sleep(self.scripted_processing_delay_seconds)
         with self.lock:
             feedback_candidates = self._feedback_candidates(command.command)
             self.runtime.handle(command)
@@ -756,7 +769,24 @@ def _build_session(
     repository = SQLiteRepository(check_same_thread=False)
     profile_import = seed_profile_repository(repository, profile)
 
-    if settings.mode == "cloud":
+    scripted_demo = (
+        settings.lin_yue_scripted_demo_enabled
+        and profile_ref == "lin_yue_demo"
+    )
+    if scripted_demo:
+        voice_profile_id = (
+            profile.voice_consent.voice_profile_id
+            if profile.voice_consent is not None
+            else None
+        )
+        base_asr = LinYueScriptedASRAdapter()
+        intent = LinYueScriptedIntentAdapter()
+        command_intent = MockCommandIntentAdapter()
+        delegate_tts = CachedTTSAdapter(
+            root / fixture["tts"]["neutral_cache"],
+            root / fixture["tts"]["personal_cache"],
+        )
+    elif settings.mode == "cloud":
         if not settings.gateway_token:
             repository.close()
             raise RuntimeError("Cloud demo requires GATEWAY_TOKEN")
@@ -842,6 +872,10 @@ def _build_session(
         profile_ref=profile_ref,
         profile_registry=profile_registry,
         fixture_audio_id=fixture["audio_id"],
+        scripted_demo=scripted_demo,
+        scripted_processing_delay_seconds=(
+            settings.lin_yue_scripted_demo_delay_seconds
+        ),
     )
 
 

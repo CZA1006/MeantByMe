@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from meantbyme.core.domain import RuntimeEventType, SessionStage
 from services.web_demo.app import create_app
 from services.web_demo.config import WebDemoSettings
+from services.web_demo.scripted_demo import LIN_YUE_SCRIPTED_TEXT
 from tests.helpers.stub_gateway import (
     StubGatewayState,
     running_stub_gateway,
@@ -219,6 +220,77 @@ def test_expression_upload_merges_viaim_primary_without_echoing_text(
     ]
     assert asr_events[0]["payload"]["provider"] == "viaim_ios_primary"
     assert transcript not in str(asr_events)
+
+
+def test_lin_yue_demo_is_scripted_without_gateway_models(
+    tmp_path: Path,
+) -> None:
+    settings = _settings(
+        tmp_path,
+        mode="cloud",
+        gateway_token="",
+        lin_yue_scripted_demo_delay_seconds=0,
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        created_response = client.post(
+            "/api/sessions",
+            headers={"X-Demo-Token": DEMO_TOKEN},
+            json={"language": "en", "profile_ref": "lin_yue_demo"},
+        )
+        assert created_response.status_code == 200
+        created = created_response.json()
+        session_id = created["session"]["session_id"]
+        headers = {
+            "X-Demo-Token": DEMO_TOKEN,
+            "X-Demo-Session": created["session_token"],
+        }
+        _command(client, session_id, headers, "start_capture")
+        upload = client.post(
+            f"/api/sessions/{session_id}/audio",
+            headers={
+                **headers,
+                "Content-Type": "audio/wav",
+                "X-Viaim-Primary-Transcript-B64": base64.b64encode(
+                    b"this live transcript must be ignored"
+                ).decode("ascii"),
+            },
+            content=wav_bytes(),
+        )
+        heard = _command(client, session_id, headers, "stop_capture")
+        candidates = _command(
+            client,
+            session_id,
+            headers,
+            "proceed_without_heard_confirmation",
+        )
+        prepared = _command(
+            client,
+            session_id,
+            headers,
+            "prepare_candidate_readback",
+            payload={
+                "candidate_id": candidates["session"]["candidates"][0]["id"]
+            },
+        )
+
+    assert upload.status_code == 200
+    assert "this live transcript must be ignored" not in [
+        *heard["session"]["heard_stable"],
+        *heard["session"]["heard_uncertain"],
+    ]
+    assert candidates["session"]["candidates"][0]["text"] == (
+        LIN_YUE_SCRIPTED_TEXT
+    )
+    assert prepared["session"]["stage"] == SessionStage.FINAL_REVIEW
+    asr_providers = [
+        event["payload"]["provider"]
+        for event in heard["session"]["trace_items"]
+        if event["event_type"] == RuntimeEventType.ASR_RESULT_RECEIVED
+    ]
+    assert asr_providers == [
+        "lin_yue_demo_primary",
+        "lin_yue_demo_secondary",
+    ]
 
 
 def test_frontend_never_auto_checks_patient_confirmation() -> None:

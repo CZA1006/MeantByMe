@@ -4,6 +4,7 @@ import Foundation
 enum AudioRouterError: LocalizedError {
     case earbudsNotActive
     case publicSpeakerNotActive
+    case invalidAudioData
     case playbackCouldNotStart
 
     var errorDescription: String? {
@@ -12,6 +13,8 @@ enum AudioRouterError: LocalizedError {
             return "未检测到耳机私密输出，为防止未确认内容外放，已停止朗读。"
         case .publicSpeakerNotActive:
             return "无法切换到 iPhone 扬声器，本次确认内容没有外放。"
+        case .invalidAudioData:
+            return "收到的音频为空或无法解码，本次内容没有播放。"
         case .playbackCouldNotStart:
             return "音频播放器启动失败，本次确认内容没有外放。"
         }
@@ -36,12 +39,21 @@ final class AudioRouter: NSObject {
         language: String,
         completion: @escaping (Bool) -> Void
     ) throws {
+        let trimmedText = text.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard
+            !trimmedText.isEmpty,
+            let voice = AVSpeechSynthesisVoice(
+                language: language.hasPrefix("zh") ? "zh-CN" : "en-US"
+            )
+        else {
+            throw AudioRouterError.playbackCouldNotStart
+        }
         try configurePrivateRoute()
         self.completion = completion
-        let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = AVSpeechSynthesisVoice(
-            language: language.hasPrefix("zh") ? "zh-CN" : "en-US"
-        )
+        let utterance = AVSpeechUtterance(string: trimmedText)
+        utterance.voice = voice
         utterance.rate = 0.43
         speech.speak(utterance)
     }
@@ -50,31 +62,39 @@ final class AudioRouter: NSObject {
         _ data: Data,
         completion: @escaping (Bool) -> Void
     ) throws {
+        guard !data.isEmpty else {
+            throw AudioRouterError.invalidAudioData
+        }
         try configurePrivateRoute()
         self.completion = completion
-        player = try AVAudioPlayer(data: data)
-        player?.delegate = self
-        player?.prepareToPlay()
-        player?.play()
+        do {
+            player = try makePlayer(data: data)
+        } catch {
+            cancelSynchronousPlaybackStart()
+            throw error
+        }
+        guard player?.play() == true else {
+            cancelSynchronousPlaybackStart()
+            throw AudioRouterError.playbackCouldNotStart
+        }
     }
 
     func playPublicAudio(
         _ data: Data,
         completion: @escaping (Bool) -> Void
     ) throws {
+        guard !data.isEmpty else {
+            throw AudioRouterError.invalidAudioData
+        }
         try configurePublicRoute()
         self.completion = completion
-        player = try AVAudioPlayer(data: data)
-        player?.delegate = self
-        player?.volume = 1
-        guard
-            player?.prepareToPlay() == true
-        else {
-            player = nil
-            self.completion = nil
-            deactivateAudioSession()
-            throw AudioRouterError.playbackCouldNotStart
+        do {
+            player = try makePlayer(data: data)
+        } catch {
+            cancelSynchronousPlaybackStart()
+            throw error
         }
+        player?.volume = 1
         // Viaim may release its HFP recording route immediately after the
         // command capture callback. Let that route change settle, then apply
         // the speaker override once more immediately before playback.
@@ -85,8 +105,39 @@ final class AudioRouter: NSObject {
         }
     }
 
+    func playPublicText(
+        _ text: String,
+        language: String,
+        completion: @escaping (Bool) -> Void
+    ) throws {
+        let trimmedText = text.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard
+            !trimmedText.isEmpty,
+            let voice = AVSpeechSynthesisVoice(
+                language: language.hasPrefix("zh") ? "zh-CN" : "en-US"
+            )
+        else {
+            throw AudioRouterError.playbackCouldNotStart
+        }
+        try configurePublicRoute()
+        self.completion = completion
+        let utterance = AVSpeechUtterance(string: trimmedText)
+        utterance.voice = voice
+        utterance.rate = 0.43
+        utterance.volume = 1
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + 0.25
+        ) { [weak self] in
+            self?.startPublicSpeechAfterRouteSettles(utterance)
+        }
+    }
+
     func beginSpeakerVolumeTest() async throws {
-        speakerTestSpeech.stopSpeaking(at: .immediate)
+        if speakerTestSpeech.isSpeaking {
+            speakerTestSpeech.stopSpeaking(at: .immediate)
+        }
         try configurePublicRoute()
         // The Viaim Bluetooth route may take a moment to release. Keep the
         // public route active while the system volume slider is on screen.
@@ -116,11 +167,25 @@ final class AudioRouter: NSObject {
         }) else {
             throw AudioRouterError.publicSpeakerNotActive
         }
-        speakerTestSpeech.stopSpeaking(at: .immediate)
+        guard session.outputVolume > 0.001 else {
+#if DEBUG
+            print(
+                "[MeantByMeAudio] playback_skipped purpose=speaker_test "
+                    + "reason=system_volume_zero"
+            )
+#endif
+            return
+        }
+        if speakerTestSpeech.isSpeaking {
+            speakerTestSpeech.stopSpeaking(at: .immediate)
+        }
         let utterance = AVSpeechUtterance(
             string: "这是手机扬声器测试，请将音量调节到清晰可听。"
         )
-        utterance.voice = AVSpeechSynthesisVoice(language: "zh-CN")
+        guard let voice = AVSpeechSynthesisVoice(language: "zh-CN") else {
+            throw AudioRouterError.playbackCouldNotStart
+        }
+        utterance.voice = voice
         utterance.rate = 0.43
         utterance.volume = 1
         speakerTestSpeech.speak(utterance)
@@ -139,8 +204,12 @@ final class AudioRouter: NSObject {
     }
 
     func stop() {
-        speech.stopSpeaking(at: .immediate)
-        speakerTestSpeech.stopSpeaking(at: .immediate)
+        if speech.isSpeaking {
+            speech.stopSpeaking(at: .immediate)
+        }
+        if speakerTestSpeech.isSpeaking {
+            speakerTestSpeech.stopSpeaking(at: .immediate)
+        }
         speakerTestActive = false
         player?.stop()
         player = nil
@@ -163,11 +232,32 @@ final class AudioRouter: NSObject {
         guard session.currentRoute.outputs.contains(where: {
             privatePorts.contains($0.portType)
         }) else {
+            deactivateAudioSession()
             throw AudioRouterError.earbudsNotActive
         }
 #if DEBUG
         debugLogRoute("private", session: session)
 #endif
+    }
+
+    private func makePlayer(data: Data) throws -> AVAudioPlayer {
+        guard !data.isEmpty else {
+            throw AudioRouterError.invalidAudioData
+        }
+        let decodedPlayer: AVAudioPlayer
+        do {
+            decodedPlayer = try AVAudioPlayer(data: data)
+        } catch {
+            throw AudioRouterError.invalidAudioData
+        }
+        guard decodedPlayer.duration > 0 else {
+            throw AudioRouterError.invalidAudioData
+        }
+        decodedPlayer.delegate = self
+        guard decodedPlayer.prepareToPlay() else {
+            throw AudioRouterError.playbackCouldNotStart
+        }
+        return decodedPlayer
     }
 
     private func configurePublicRoute() throws {
@@ -222,12 +312,39 @@ final class AudioRouter: NSObject {
         }
     }
 
+    private func startPublicSpeechAfterRouteSettles(
+        _ utterance: AVSpeechUtterance
+    ) {
+        guard completion != nil else { return }
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.overrideOutputAudioPort(.speaker)
+            guard session.currentRoute.outputs.contains(where: {
+                $0.portType == .builtInSpeaker
+            }) else {
+                throw AudioRouterError.publicSpeakerNotActive
+            }
+#if DEBUG
+            debugLogRoute("public_text", session: session)
+#endif
+            speech.speak(utterance)
+        } catch {
+            finish(false)
+        }
+    }
+
     private func finish(_ success: Bool) {
         let callback = completion
         completion = nil
         player = nil
         deactivateAudioSession()
         callback?(success)
+    }
+
+    private func cancelSynchronousPlaybackStart() {
+        completion = nil
+        player = nil
+        deactivateAudioSession()
     }
 
     private func deactivateAudioSession() {
@@ -254,28 +371,42 @@ final class AudioRouter: NSObject {
 #endif
 }
 
-extension AudioRouter: @preconcurrency AVAudioPlayerDelegate {
-    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        finish(flag)
+extension AudioRouter: AVAudioPlayerDelegate {
+    nonisolated func audioPlayerDidFinishPlaying(
+        _ player: AVAudioPlayer,
+        successfully flag: Bool
+    ) {
+        Task { @MainActor [weak self] in
+            self?.finish(flag)
+        }
     }
 
-    func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
-        finish(false)
+    nonisolated func audioPlayerDecodeErrorDidOccur(
+        _ player: AVAudioPlayer,
+        error: Error?
+    ) {
+        Task { @MainActor [weak self] in
+            self?.finish(false)
+        }
     }
 }
 
-extension AudioRouter: @preconcurrency AVSpeechSynthesizerDelegate {
-    func speechSynthesizer(
+extension AudioRouter: AVSpeechSynthesizerDelegate {
+    nonisolated func speechSynthesizer(
         _ synthesizer: AVSpeechSynthesizer,
         didFinish utterance: AVSpeechUtterance
     ) {
-        finish(true)
+        Task { @MainActor [weak self] in
+            self?.finish(true)
+        }
     }
 
-    func speechSynthesizer(
+    nonisolated func speechSynthesizer(
         _ synthesizer: AVSpeechSynthesizer,
         didCancel utterance: AVSpeechUtterance
     ) {
-        finish(false)
+        Task { @MainActor [weak self] in
+            self?.finish(false)
+        }
     }
 }

@@ -148,6 +148,13 @@ configured on the `meantbyme-ios` BFF; the native iOS app and
   Before upload, the app removes that trailing silence while retaining small
   pre/post-roll padding around detected speech.
 - Confirm that an unconfirmed readback never falls back to the iPhone speaker.
+- When the system output volume is zero, the speaker test intentionally skips
+  its first utterance. Raise the volume with the on-screen system slider, then
+  tap **再次播放测试语音**.
+- Xcode 26 may print `unsafeForcedSync` from the platform accessibility
+  subsystem while presenting system controls such as `MPVolumeView`. Treat it
+  as a platform diagnostic unless there is also an app crash/backtrace. Audio
+  delegate callbacks still cross to `MainActor` asynchronously.
 - After the private readback, say “是”, “嗯”, or “没错” to confirm.
 - Say “不是”, “不对”, or “换一个” to reject and hear another candidate.
 - If the two interpretations disagree or the response is unclear, the app

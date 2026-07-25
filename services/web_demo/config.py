@@ -45,6 +45,8 @@ class WebDemoSettings:
     mysql_connect_timeout_seconds: int = 5
     mysql_ssl_ca: str | None = None
     mysql_auto_create_schema: bool = False
+    lin_yue_scripted_demo_enabled: bool = True
+    lin_yue_scripted_demo_delay_seconds: float = 3.5
 
     @classmethod
     def from_env(cls) -> "WebDemoSettings":
@@ -163,5 +165,19 @@ class WebDemoSettings:
                     "WEB_DEMO_MYSQL_AUTO_CREATE_SCHEMA", "false"
                 ).strip().lower()
                 in {"1", "true", "yes", "on"}
+            ),
+            lin_yue_scripted_demo_enabled=(
+                os.getenv(
+                    "WEB_DEMO_LIN_YUE_SCRIPTED", "true"
+                ).strip().lower()
+                in {"1", "true", "yes", "on"}
+            ),
+            lin_yue_scripted_demo_delay_seconds=max(
+                0.0,
+                float(
+                    os.getenv(
+                        "WEB_DEMO_LIN_YUE_DELAY_SECONDS", "3.5"
+                    )
+                ),
             ),
         )

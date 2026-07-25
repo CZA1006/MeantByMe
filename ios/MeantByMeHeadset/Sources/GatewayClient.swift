@@ -52,6 +52,12 @@ actor GatewayClient {
             includeSession: false
         )
         guard let token = response.sessionToken else {
+#if DEBUG
+            print(
+                "[MeantByMeGateway] semantic_invalid "
+                    + "path=/api/sessions missing=session_token"
+            )
+#endif
             throw GatewayClientError.invalidResponse
         }
         sessionId = response.session.sessionId
@@ -75,6 +81,12 @@ actor GatewayClient {
             includeSession: false
         )
         guard let token = response.sessionToken else {
+#if DEBUG
+            print(
+                "[MeantByMeGateway] semantic_invalid "
+                    + "path=/api/qa/sessions missing=session_token"
+            )
+#endif
             throw GatewayClientError.invalidResponse
         }
         sessionId = response.sessionId
@@ -213,6 +225,12 @@ actor GatewayClient {
         do {
             return try JSONDecoder().decode(EarbudInterpretation.self, from: data)
         } catch {
+            Self.debugLogDecodeFailure(
+                error,
+                data: data,
+                path: url.path,
+                expectedType: EarbudInterpretation.self
+            )
             throw GatewayClientError.invalidResponse
         }
     }
@@ -263,6 +281,12 @@ actor GatewayClient {
                 QASessionResponse.self, from: data
             )
         } catch {
+            Self.debugLogDecodeFailure(
+                error,
+                data: data,
+                path: url.path,
+                expectedType: QASessionResponse.self
+            )
             throw GatewayClientError.invalidResponse
         }
     }
@@ -349,6 +373,12 @@ actor GatewayClient {
         do {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
+            Self.debugLogDecodeFailure(
+                error,
+                data: data,
+                path: absoluteURL.path,
+                expectedType: T.self
+            )
             throw GatewayClientError.invalidResponse
         }
     }
@@ -456,6 +486,64 @@ actor GatewayClient {
             return message
         }
         return "请求失败"
+    }
+
+    private static func debugLogDecodeFailure<T>(
+        _ error: Error,
+        data: Data,
+        path: String,
+        expectedType: T.Type
+    ) {
+#if DEBUG
+        let reason: String
+        switch error {
+        case let DecodingError.keyNotFound(key, context):
+            reason = (
+                "missing_key=\(key.stringValue) "
+                    + "coding_path=\(codingPath(context.codingPath))"
+            )
+        case let DecodingError.typeMismatch(_, context):
+            reason = (
+                "type_mismatch coding_path="
+                    + codingPath(context.codingPath)
+                    + " detail=\(context.debugDescription)"
+            )
+        case let DecodingError.valueNotFound(_, context):
+            reason = (
+                "missing_value coding_path="
+                    + codingPath(context.codingPath)
+                    + " detail=\(context.debugDescription)"
+            )
+        case let DecodingError.dataCorrupted(context):
+            reason = (
+                "data_corrupted coding_path="
+                    + codingPath(context.codingPath)
+                    + " detail=\(context.debugDescription)"
+            )
+        default:
+            let nsError = error as NSError
+            reason = "domain=\(nsError.domain) code=\(nsError.code)"
+        }
+        let rootKeys: String
+        if
+            let object = try? JSONSerialization.jsonObject(with: data),
+            let dictionary = object as? [String: Any]
+        {
+            rootKeys = dictionary.keys.sorted().joined(separator: ",")
+        } else {
+            rootKeys = "<non-object>"
+        }
+        print(
+            "[MeantByMeGateway] decode_failed "
+                + "path=\(path) expected=\(String(describing: expectedType)) "
+                + "\(reason) root_keys=\(rootKeys) bytes=\(data.count)"
+        )
+#endif
+    }
+
+    private static func codingPath(_ path: [CodingKey]) -> String {
+        guard !path.isEmpty else { return "<root>" }
+        return path.map(\.stringValue).joined(separator: ".")
     }
 
     private func debugLogWAVUpload(

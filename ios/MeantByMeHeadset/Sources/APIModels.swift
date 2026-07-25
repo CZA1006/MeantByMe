@@ -15,6 +15,13 @@ struct UserProfileSummary: Decodable, Identifiable, Hashable {
     let memoryCount: Int?
 
     var id: String { profileRef }
+    var displayLabel: String {
+        switch profileRef {
+        case "lin_yue_demo": return "林悦"
+        case "david_demo": return "David"
+        default: return label
+        }
+    }
 
     enum CodingKeys: String, CodingKey {
         case label, languages, source, simulated
@@ -28,15 +35,41 @@ struct UserProfileMemory: Decodable, Identifiable {
     let id: String
     let text: String
     let kind: String
-    let verificationLevel: String
+    let trustState: String
     let source: String
     let sensitivity: String
     let promptEligible: Bool
 
     enum CodingKeys: String, CodingKey {
         case id, text, kind, source, sensitivity
-        case verificationLevel = "verification_level"
+        case trustState = "trust_state"
+        case legacyVerificationLevel = "verification_level"
         case promptEligible = "prompt_eligible"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        text = try container.decode(String.self, forKey: .text)
+        kind = try container.decode(String.self, forKey: .kind)
+        source = try container.decode(String.self, forKey: .source)
+        sensitivity = try container.decode(String.self, forKey: .sensitivity)
+        promptEligible = try container.decode(
+            Bool.self,
+            forKey: .promptEligible
+        )
+        if let value = try container.decodeIfPresent(
+            String.self,
+            forKey: .trustState
+        ) {
+            trustState = value
+        } else {
+            let legacy = try container.decode(
+                String.self,
+                forKey: .legacyVerificationLevel
+            )
+            trustState = legacy == "unverified" ? "unconfirmed" : "trusted"
+        }
     }
 }
 

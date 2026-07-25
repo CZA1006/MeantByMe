@@ -9,7 +9,7 @@
   "schema_version": 1,
   "simulated": true,
   "profile_id": "lin_yue_demo",
-  "label": "林悦（中风后重返岗位的程序员）",
+  "label": "林悦",
   "patient": {
     "patient_id": "lin_yue_demo",
     "display_name": "林悦",

@@ -1,12 +1,28 @@
 import Combine
 import Foundation
 
+private enum CompanionFlowError: LocalizedError {
+    case missingQAResponse
+    case missingQAAudio
+    case noExpressionCandidates
+
+    var errorDescription: String? {
+        switch self {
+        case .missingQAResponse:
+            return "AI 暂时没有生成可用回答，请重新说一次"
+        case .missingQAAudio:
+            return "AI 已生成文字回答，但耳机语音生成失败，请重新说一次"
+        case .noExpressionCandidates:
+            return "AI 暂时没有生成可用的表达候选，请重新说一次"
+        }
+    }
+}
+
 @MainActor
 final class CompanionViewModel: ObservableObject {
     @Published var mode: CompanionMode = .expression
     @Published private(set) var sessionStarted = false
-    @Published private(set) var sessionStatus = "等待陪护者开始"
-    @Published private(set) var safetyStatus = "仅使用系统中性音"
+    @Published private(set) var sessionStatus = "等待陪伴开始"
     @Published private(set) var expressionElapsedSeconds = 0
     @Published private(set) var expressionTimerActive = false
     @Published private(set) var expressionTimerVisible = false
@@ -19,6 +35,8 @@ final class CompanionViewModel: ObservableObject {
     @Published private(set) var selectedProfileLanguage: String
     @Published private(set) var selectedProfileDetail: UserProfileDetail?
     @Published private(set) var profilesLoading = false
+    @Published private(set) var profileDetailLoading = false
+    @Published private(set) var profileDetailError: String?
     @Published var errorMessage: String?
 
     let headset = ViaimHeadsetService()
@@ -31,6 +49,7 @@ final class CompanionViewModel: ObservableObject {
     private var captureProcessingTask: Task<Void, Never>?
     private var safetyAbortInProgress = false
     private var captureBoundaryReached = false
+    private var activeCapturePurpose: CapturePurpose?
     private var activeSessionID: String?
     private var activeQATurnID: String?
     private var stoppedSessionRecoveryAttempted = false
@@ -40,6 +59,8 @@ final class CompanionViewModel: ObservableObject {
     private var firstConfirmationEvidence: VoiceCommandEvidence?
     private var currentPromptID = ""
     private var cancellables: Set<AnyCancellable> = []
+    private var profileDetailCache: [String: UserProfileDetail] = [:]
+    private var profileDetailLoadingRefs: Set<String> = []
 
     var headsetConnected: Bool { headset.connected }
     var headsetStatus: String { headset.status }
@@ -50,15 +71,27 @@ final class CompanionViewModel: ObservableObject {
             && !safetyAbortInProgress
             && !expressionCancellationInProgress
     }
+    var canFinishSpeaking: Bool {
+        guard
+            sessionStarted,
+            headset.recording,
+            !captureBoundaryReached,
+            !safetyAbortInProgress,
+            !expressionCancellationInProgress
+        else {
+            return false
+        }
+        return activeCapturePurpose == .expression
+            || activeCapturePurpose == .question
+    }
     var currentRoundLabel: String {
         mode == .qa ? "本次提问" : "本次表达"
     }
     var cancelActionLabel: String {
         if expressionCancellationInProgress {
-            return mode == .qa
-                ? "正在结束本次提问…" : "正在结束本次表达…"
+            return "正在丢弃这句话…"
         }
-        return mode == .qa ? "结束本次提问" : "结束本次表达"
+        return "丢弃这句话"
     }
     var activeGuidance: String {
         if mode == .qa {
@@ -79,7 +112,7 @@ final class CompanionViewModel: ObservableObject {
         ) ?? "lin_yue_demo"
         selectedProfileLabel = defaults.string(
             forKey: "selected_profile_label"
-        ) ?? "Lin Yue（演示用户）"
+        ) ?? "林悦"
         selectedProfileLanguage = defaults.string(
             forKey: "selected_profile_language"
         ) ?? "zh"
@@ -93,6 +126,7 @@ final class CompanionViewModel: ObservableObject {
         }
         headset.onCaptureFinished = { [weak self] capture in
             guard let self else { return }
+            self.activeCapturePurpose = nil
             self.captureProcessingTask?.cancel()
             self.captureProcessingTask = Task {
                 await self.handleCapture(capture)
@@ -115,10 +149,14 @@ final class CompanionViewModel: ObservableObject {
 
     func refreshProfiles() async {
         guard let gateway, !profilesLoading else { return }
+        if !profiles.isEmpty {
+            await loadSelectedProfileDetail()
+            return
+        }
         profilesLoading = true
         defer { profilesLoading = false }
         do {
-            let loaded = try await gateway.listProfiles()
+            let loaded = visibleProfiles(try await gateway.listProfiles())
             profiles = loaded
             if !sessionStarted {
                 if let selected = loaded.first(where: {
@@ -132,6 +170,7 @@ final class CompanionViewModel: ObservableObject {
                 }
             }
             await loadSelectedProfileDetail()
+            prefetchBuiltInProfileDetails()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -146,15 +185,39 @@ final class CompanionViewModel: ObservableObject {
         await loadSelectedProfileDetail()
     }
 
-    func loadSelectedProfileDetail() async {
+    func loadSelectedProfileDetail(forceReload: Bool = false) async {
         guard let gateway else { return }
+        let profileRef = selectedProfileRef
+        if !forceReload, let cached = profileDetailCache[profileRef] {
+            selectedProfileDetail = cached
+            profileDetailError = nil
+            profileDetailLoading = false
+            return
+        }
+        if profileDetailLoadingRefs.contains(profileRef) {
+            profileDetailLoading = true
+            return
+        }
+        profileDetailLoadingRefs.insert(profileRef)
+        selectedProfileDetail = nil
+        profileDetailError = nil
+        profileDetailLoading = true
+        defer {
+            profileDetailLoadingRefs.remove(profileRef)
+            if selectedProfileRef == profileRef {
+                profileDetailLoading = false
+            }
+        }
         do {
-            selectedProfileDetail = try await gateway.profileDetail(
-                profileRef: selectedProfileRef
+            let detail = try await gateway.profileDetail(
+                profileRef: profileRef
             )
+            profileDetailCache[profileRef] = detail
+            guard selectedProfileRef == profileRef else { return }
+            selectedProfileDetail = detail
         } catch {
-            selectedProfileDetail = nil
-            errorMessage = error.localizedDescription
+            guard selectedProfileRef == profileRef else { return }
+            profileDetailError = error.localizedDescription
         }
     }
 
@@ -164,7 +227,7 @@ final class CompanionViewModel: ObservableObject {
         guard let gateway, !sessionStarted else { return false }
         do {
             let created = try await gateway.createProfile(input)
-            profiles = try await gateway.listProfiles()
+            profiles = visibleProfiles(try await gateway.listProfiles())
             applySelectedProfile(created)
             await loadSelectedProfileDetail()
             return true
@@ -178,7 +241,7 @@ final class CompanionViewModel: ObservableObject {
         guard let gateway, !sessionStarted else { return false }
         do {
             let created = try await gateway.importProfileMarkdown(data)
-            profiles = try await gateway.listProfiles()
+            profiles = visibleProfiles(try await gateway.listProfiles())
             applySelectedProfile(created)
             await loadSelectedProfileDetail()
             return true
@@ -190,15 +253,68 @@ final class CompanionViewModel: ObservableObject {
 
     private func applySelectedProfile(_ profile: UserProfileSummary) {
         selectedProfileRef = profile.profileRef
-        selectedProfileLabel = profile.label
+        selectedProfileLabel = profile.displayLabel
         selectedProfileLanguage = profile.defaultLanguage
+        selectedProfileDetail = profileDetailCache[profile.profileRef]
+        profileDetailError = nil
+        profileDetailLoading = profileDetailLoadingRefs.contains(
+            profile.profileRef
+        )
         let defaults = UserDefaults.standard
         defaults.set(profile.profileRef, forKey: "selected_profile_ref")
-        defaults.set(profile.label, forKey: "selected_profile_label")
+        defaults.set(profile.displayLabel, forKey: "selected_profile_label")
         defaults.set(
             profile.defaultLanguage,
             forKey: "selected_profile_language"
         )
+    }
+
+    private func visibleProfiles(
+        _ loaded: [UserProfileSummary]
+    ) -> [UserProfileSummary] {
+        loaded.filter { $0.profileRef != "no_profile" }
+    }
+
+    private func prefetchBuiltInProfileDetails() {
+        guard let gateway else { return }
+        let profileRefs = profiles
+            .map(\.profileRef)
+            .filter {
+                ["lin_yue_demo", "david_demo"].contains($0)
+                    && profileDetailCache[$0] == nil
+                    && $0 != selectedProfileRef
+            }
+        guard !profileRefs.isEmpty else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            for profileRef in profileRefs {
+                guard
+                    self.profileDetailCache[profileRef] == nil,
+                    !self.profileDetailLoadingRefs.contains(profileRef)
+                else {
+                    continue
+                }
+                self.profileDetailLoadingRefs.insert(profileRef)
+                do {
+                    let detail = try await gateway.profileDetail(
+                        profileRef: profileRef
+                    )
+                    self.profileDetailCache[profileRef] = detail
+                    if self.selectedProfileRef == profileRef {
+                        self.selectedProfileDetail = detail
+                        self.profileDetailError = nil
+                    }
+                } catch {
+                    if self.selectedProfileRef == profileRef {
+                        self.profileDetailError = error.localizedDescription
+                    }
+                }
+                self.profileDetailLoadingRefs.remove(profileRef)
+                if self.selectedProfileRef == profileRef {
+                    self.profileDetailLoading = false
+                }
+            }
+        }
     }
 
     func beginSpeakerVolumeTest() async {
@@ -231,9 +347,6 @@ final class CompanionViewModel: ObservableObject {
         guard !sessionStarted, !safetyAbortInProgress else { return }
         endSpeakerVolumeTest()
         sessionStarted = true
-        safetyStatus = mode == .qa
-            ? "AI 回答仅在耳机播放，并始终使用系统中性音"
-            : "候选仅在耳机播放；语音确认后以中性音外放"
         do {
             if mode == .qa {
                 try await beginQAConversation()
@@ -245,6 +358,17 @@ final class CompanionViewModel: ObservableObject {
         }
     }
 
+    func finishSpeaking() {
+        guard canFinishSpeaking else { return }
+        silenceTask?.cancel()
+        captureBoundaryReached = true
+        stopExpressionTimer(reset: false)
+        sessionStatus = mode == .qa
+            ? "你已说完，正在理解并回答…"
+            : "你已说完，正在理解并补全表达…"
+        headset.stopCapture()
+    }
+
     func stopCompanion() async {
         guard !safetyAbortInProgress else { return }
         safetyAbortInProgress = true
@@ -252,6 +376,7 @@ final class CompanionViewModel: ObservableObject {
         silenceTask?.cancel()
         stopExpressionTimer(reset: true)
         captureProcessingTask?.cancel()
+        activeCapturePurpose = nil
         activeSessionID = nil
         sessionStatus = "正在结束陪伴并丢弃未完成的表达…"
         audioRouter.stop()
@@ -276,7 +401,6 @@ final class CompanionViewModel: ObservableObject {
         safetyAbortInProgress = false
         resetRoundState()
         sessionStatus = "陪伴已结束"
-        safetyStatus = "仅使用系统中性音"
     }
 
     func cancelCurrentExpression() async {
@@ -297,11 +421,11 @@ final class CompanionViewModel: ObservableObject {
         stopExpressionTimer(reset: true)
         captureProcessingTask?.cancel()
         captureProcessingTask = nil
+        activeCapturePurpose = nil
         activeSessionID = nil
         audioRouter.stop()
         resetRoundState()
         sessionStatus = "正在丢弃本次表达…"
-        safetyStatus = "本次内容不会外放，也不会写入确认记忆"
 
         await withCheckedContinuation { continuation in
             headset.discardCurrentCapture {
@@ -336,9 +460,6 @@ final class CompanionViewModel: ObservableObject {
             sessionStatus = cancellationAccepted
                 ? "已结束上一条表达，正在等待患者重新说"
                 : "上一轮已经结束，正在等待患者重新说"
-            safetyStatus = cancellationAccepted
-                ? "上一条内容已丢弃；仅使用系统中性音"
-                : "未新增确认或记忆；仅使用系统中性音"
         } catch {
             expressionCancellationInProgress = false
             guard sessionStarted, !safetyAbortInProgress else { return }
@@ -362,11 +483,11 @@ final class CompanionViewModel: ObservableObject {
         stopExpressionTimer(reset: true)
         captureProcessingTask?.cancel()
         captureProcessingTask = nil
+        activeCapturePurpose = nil
         audioRouter.stop()
         activeQATurnID = nil
         captureBoundaryReached = false
         sessionStatus = "正在丢弃本次提问…"
-        safetyStatus = "本轮不会进入后续对话上下文"
 
         await withCheckedContinuation { continuation in
             headset.discardCurrentCapture {
@@ -389,7 +510,6 @@ final class CompanionViewModel: ObservableObject {
         }
         beginNextQuestionCapture()
         sessionStatus = "已结束上一轮提问，正在等待患者重新提问"
-        safetyStatus = "上一轮已丢弃；AI 回答仅在耳机使用中性音"
         expressionCancellationInProgress = false
     }
 
@@ -425,7 +545,7 @@ final class CompanionViewModel: ObservableObject {
         captureBoundaryReached = false
         activeQATurnID = UUID().uuidString
         sessionStatus = "正在持续聆听；停顿 5 秒后 AI 将直接回答"
-        headset.startCapture(.question, sessionID: sessionID)
+        startHeadsetCapture(.question, sessionID: sessionID)
     }
 
     private func beginNextExpressionRound() async throws {
@@ -447,7 +567,7 @@ final class CompanionViewModel: ObservableObject {
         response = try await gateway.command("start_capture")
         sessionStatus = "正在持续聆听；停顿 5 秒后自动理解本次表达"
         captureBoundaryReached = false
-        headset.startCapture(
+        startHeadsetCapture(
             .expression,
             sessionID: created.session.sessionId
         )
@@ -569,11 +689,10 @@ final class CompanionViewModel: ObservableObject {
         }
         qaResponse = result
         guard let answer = result.response else {
-            throw GatewayClientError.invalidResponse
+            throw CompanionFlowError.missingQAResponse
         }
         guard result.audioAvailable else {
-            sessionStatus = "AI 已生成文字回答，但耳机语音生成失败"
-            throw GatewayClientError.invalidResponse
+            throw CompanionFlowError.missingQAAudio
         }
         let audio = try await gateway.qaAudio(
             turnID: turnID,
@@ -582,7 +701,6 @@ final class CompanionViewModel: ObservableObject {
         sessionStatus = answer.shouldClarify
             ? "问题含义不够明确，AI 正在耳机中追问…"
             : "AI 正在耳机中回答…"
-        safetyStatus = "这是 AI 的回答，不代表患者对外表达；不写入确认记忆"
         try audioRouter.playPrivateAudio(audio) { [weak self] success in
             Task { @MainActor in
                 guard let self else { return }
@@ -684,7 +802,6 @@ final class CompanionViewModel: ObservableObject {
             activeSessionID = nil
             resetRoundState()
             sessionStatus = "患者已通过语音停止陪伴"
-            safetyStatus = "未执行新的外放或记忆写入"
             return
         }
 
@@ -735,18 +852,23 @@ final class CompanionViewModel: ObservableObject {
     private func presentFirstCandidate() async throws {
         guard let gateway, let response else { return }
         guard let candidate = response.session.candidates.first else {
-            throw GatewayClientError.invalidResponse
+#if DEBUG
+            print(
+                "[MeantByMeFlow] no_candidates "
+                    + "stage=\(response.session.stage) "
+                    + "failure_status=\(response.failureStatus ?? "<none>")"
+            )
+#endif
+            throw CompanionFlowError.noExpressionCandidates
         }
         currentCandidate = candidate
         privateReadbackCompleted = false
         firstConfirmationEvidence = nil
-        self.response = try await gateway.command(
+        let prepared = try await gateway.command(
             "prepare_candidate_readback",
             payload: ["candidate_id": candidate.id]
         )
-        guard let prepared = self.response else {
-            throw GatewayClientError.invalidResponse
-        }
+        self.response = prepared
         additionalVoiceConfirmationRequired = (
             prepared.strict || candidate.sourceLevel == "L3"
         )
@@ -765,7 +887,7 @@ final class CompanionViewModel: ObservableObject {
     ) async throws {
         guard
             let gateway,
-            currentCandidate != nil,
+            let candidate = currentCandidate,
             let sessionID = activeSessionID
         else {
             return
@@ -773,62 +895,83 @@ final class CompanionViewModel: ObservableObject {
         silenceTask?.cancel()
         privateReadbackCompleted = false
         currentPromptID = UUID().uuidString
-        let audio = try await gateway.audio(kind: "neutral")
         sessionStatus = additional
             ? "正在耳机中再次完整朗读候选…"
             : "正在耳机中播放候选结果…"
-        try audioRouter.playPrivateAudio(audio) { [weak self] success in
+        let completion: (Bool) -> Void = { [weak self] success in
             Task { @MainActor in
-                guard let self else { return }
-                guard
-                    success,
-                    self.sessionStarted,
-                    self.activeSessionID == sessionID
-                else {
-                    if !success {
-                        self.fail(AudioRouterError.earbudsNotActive)
-                    }
-                    return
-                }
-                self.privateReadbackCompleted = true
-                let instruction = additional
-                    ? "请再次说是或嗯来确认，说不是来更换结果。"
-                    : "如果正确，请说是、嗯或没错；如果错误，请说不是或不对。"
-                do {
-                    try self.audioRouter.playPrivateText(
-                        instruction,
-                        language: "zh-CN"
-                    ) { [weak self] instructionPlayed in
-                        Task { @MainActor in
-                            guard let self else { return }
-                            guard
-                                instructionPlayed,
-                                self.sessionStarted,
-                                self.activeSessionID == sessionID
-                            else {
-                                if !instructionPlayed {
-                                    self.fail(
-                                        AudioRouterError.earbudsNotActive
-                                    )
-                                }
-                                return
-                            }
-                            self.startVoiceCommandCapture(
-                                sessionID: sessionID,
-                                additional: additional
+                self?.completePrivateCandidateReadback(
+                    success: success,
+                    additional: additional,
+                    sessionID: sessionID
+                )
+            }
+        }
+        if selectedProfileRef == "lin_yue_demo" {
+            try audioRouter.playPrivateText(
+                candidate.text,
+                language: candidate.language,
+                completion: completion
+            )
+        } else {
+            let audio = try await gateway.audio(kind: "neutral")
+            try audioRouter.playPrivateAudio(
+                audio,
+                completion: completion
+            )
+        }
+    }
+
+    private func completePrivateCandidateReadback(
+        success: Bool,
+        additional: Bool,
+        sessionID: String
+    ) {
+        guard
+            success,
+            sessionStarted,
+            activeSessionID == sessionID
+        else {
+            if !success {
+                fail(AudioRouterError.earbudsNotActive)
+            }
+            return
+        }
+        privateReadbackCompleted = true
+        let instruction = additional
+            ? "请再次说是或嗯来确认，说不是来更换结果。"
+            : "如果正确，请说是、嗯或没错；如果错误，请说不是或不对。"
+        do {
+            try audioRouter.playPrivateText(
+                instruction,
+                language: "zh-CN"
+            ) { [weak self] instructionPlayed in
+                Task { @MainActor in
+                    guard let self else { return }
+                    guard
+                        instructionPlayed,
+                        self.sessionStarted,
+                        self.activeSessionID == sessionID
+                    else {
+                        if !instructionPlayed {
+                            self.fail(
+                                AudioRouterError.earbudsNotActive
                             )
                         }
+                        return
                     }
-                } catch {
-                    self.fail(error)
+                    self.startVoiceCommandCapture(
+                        sessionID: sessionID
+                    )
                 }
             }
+        } catch {
+            fail(error)
         }
     }
 
     private func startVoiceCommandCapture(
-        sessionID: String,
-        additional: Bool
+        sessionID: String
     ) {
         guard
             sessionStarted,
@@ -837,18 +980,21 @@ final class CompanionViewModel: ObservableObject {
         else {
             return
         }
-        sessionStatus = additional
-            ? "等待患者再次语音确认或否定"
-            : "等待患者说“是/嗯”或“不是/不对”"
-        safetyStatus = "语音回应需经两路识别一致后才会确认"
+        sessionStatus = "等待用户回复"
         captureBoundaryReached = false
-        headset.startCapture(.command, sessionID: sessionID)
+        startHeadsetCapture(.command, sessionID: sessionID)
     }
 
     private func confirmAndPlay(
         latestEvidence: VoiceCommandEvidence
     ) async throws {
-        guard let gateway, privateReadbackCompleted else { return }
+        guard
+            let gateway,
+            let candidate = currentCandidate,
+            privateReadbackCompleted
+        else {
+            return
+        }
         var interpretationIDs = [latestEvidence.interpretationID]
         if let first = firstConfirmationEvidence {
             interpretationIDs.insert(first.interpretationID, at: 0)
@@ -861,34 +1007,45 @@ final class CompanionViewModel: ObservableObject {
             ],
             confirmationMethod: "voice_semantic"
         )
-        let audio = try await gateway.audio(kind: "neutral")
         let playbackID = UUID().uuidString
         sessionStatus = "已确认，正在通过手机扬声器播放完整句子…"
-        safetyStatus = "外放使用系统中性音，不使用患者克隆声音"
-        do {
-            try audioRouter.playPublicAudio(audio) { [weak self] success in
-                Task { @MainActor in
-                    guard let self, let gateway = self.gateway else { return }
-                    do {
-                        self.response = try await gateway.command(
-                            success
-                                ? "playback_completed"
-                                : "playback_failed",
-                            payload: [
-                                "playback_id": playbackID,
-                                "output_channel": "iphone_speaker",
-                            ]
-                        )
-                        if success {
-                            self.sessionStatus = "本次表达已播放，继续等待下一次表达"
-                            try await self.beginNextExpressionRound()
-                        } else {
-                            self.sessionStatus = "手机播放失败；本次不会写入确认记忆"
-                        }
-                    } catch {
-                        self.fail(error)
+        let completion: (Bool) -> Void = { [weak self] success in
+            Task { @MainActor in
+                guard let self, let gateway = self.gateway else { return }
+                do {
+                    self.response = try await gateway.command(
+                        success
+                            ? "playback_completed"
+                            : "playback_failed",
+                        payload: [
+                            "playback_id": playbackID,
+                            "output_channel": "iphone_speaker",
+                        ]
+                    )
+                    if success {
+                        self.sessionStatus = "本次表达已播放，继续等待下一次表达"
+                        try await self.beginNextExpressionRound()
+                    } else {
+                        self.sessionStatus = "手机播放失败；本次不会写入确认记忆"
                     }
+                } catch {
+                    self.fail(error)
                 }
+            }
+        }
+        do {
+            if selectedProfileRef == "lin_yue_demo" {
+                try audioRouter.playPublicText(
+                    candidate.text,
+                    language: candidate.language,
+                    completion: completion
+                )
+            } else {
+                let audio = try await gateway.audio(kind: "neutral")
+                try audioRouter.playPublicAudio(
+                    audio,
+                    completion: completion
+                )
             }
         } catch {
             _ = try? await gateway.command(
@@ -917,16 +1074,16 @@ final class CompanionViewModel: ObservableObject {
             stopExpressionTimer(reset: true)
             sessionStatus = "没有收到有效表达，继续等待患者说话。"
             captureBoundaryReached = false
-            headset.startCapture(.expression, sessionID: sessionID)
+            startHeadsetCapture(.expression, sessionID: sessionID)
         case .question:
             stopExpressionTimer(reset: true)
             sessionStatus = "没有收到有效问题，继续等待患者提问。"
             captureBoundaryReached = false
-            headset.startCapture(.question, sessionID: sessionID)
+            startHeadsetCapture(.question, sessionID: sessionID)
         case .command:
             sessionStatus = "没有收到确认语音，请再说一次。"
             captureBoundaryReached = false
-            headset.startCapture(.command, sessionID: sessionID)
+            startHeadsetCapture(.command, sessionID: sessionID)
         }
     }
 
@@ -971,6 +1128,15 @@ final class CompanionViewModel: ObservableObject {
         firstConfirmationEvidence = nil
         currentPromptID = ""
         captureBoundaryReached = false
+        activeCapturePurpose = nil
+    }
+
+    private func startHeadsetCapture(
+        _ purpose: CapturePurpose,
+        sessionID: String
+    ) {
+        activeCapturePurpose = purpose
+        headset.startCapture(purpose, sessionID: sessionID)
     }
 
     private func startExpressionTimerIfNeeded() {
@@ -1003,9 +1169,15 @@ final class CompanionViewModel: ObservableObject {
 
     private func fail(_ error: Error) {
         stopExpressionTimer(reset: false)
+#if DEBUG
+        print(
+            "[MeantByMeFlow] failed "
+                + "type=\(String(reflecting: type(of: error))) "
+                + "message=\(error.localizedDescription)"
+        )
+#endif
         errorMessage = error.localizedDescription
         sessionStatus = "发生错误，本次未确认或外放"
-        safetyStatus = "仅使用系统中性音"
         if case let GatewayClientError.server(code, message) = error,
            code == 409,
            message.localizedCaseInsensitiveContains("stopped") {
@@ -1023,10 +1195,10 @@ final class CompanionViewModel: ObservableObject {
         stopExpressionTimer(reset: true)
         captureProcessingTask?.cancel()
         activeSessionID = nil
+        activeCapturePurpose = nil
         audioRouter.stop()
         headset.discardCurrentCapture {}
         sessionStatus = "\(reason)，正在安全停止陪伴"
-        safetyStatus = "未执行新的确认、外放或记忆写入"
         Task {
             if let gateway, let sessionIDToStop {
                 if self.mode == .qa {

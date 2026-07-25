@@ -37,7 +37,7 @@ struct UserSettingsView: View {
                             )
                         ) {
                             ForEach(companion.profiles) { profile in
-                                Text(profile.label)
+                                Text(profile.displayLabel)
                                     .tag(profile.profileRef)
                             }
                         }
@@ -63,17 +63,7 @@ struct UserSettingsView: View {
                     }
                     .disabled(!companion.canEditCurrentUser)
                 } footer: {
-                    Text(
-                        "可通过引导问题新建档案，也可导入包含 meantbyme-profile 数据块的 Markdown 文件。"
-                    )
-                }
-
-                Section("隐私与来源") {
-                    Text(
-                        "陪护者手工填写的内容只作为 Silver 辅助背景，不能代表患者已经确认的真实意愿，也不会绕过每次表达确认。"
-                    )
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
+                    Text("可通过引导问题新建档案。")
                 }
             }
             .navigationTitle("用户设置")
@@ -130,14 +120,12 @@ private struct UserProfileDetailView: View {
                                         Text(kindLabel(memory.kind))
                                             .font(.headline)
                                         Spacer()
-                                        Text(
-                                            memory.verificationLevel == "gold"
-                                                ? "本人已确认"
-                                                : "陪护者提供"
-                                        )
+                                        Text(memory.trustState == "trusted"
+                                            ? "可信"
+                                            : "待确认")
                                         .font(.caption)
                                         .foregroundColor(
-                                            memory.verificationLevel == "gold"
+                                            memory.trustState == "trusted"
                                                 ? .green
                                                 : .orange
                                         )
@@ -158,8 +146,32 @@ private struct UserProfileDetailView: View {
                         }
                     }
                 }
-            } else {
+            } else if companion.profileDetailLoading {
                 ProgressView("正在读取人物档案…")
+            } else if let message = companion.profileDetailError {
+                VStack(spacing: 14) {
+                    Image(systemName: "exclamationmark.circle")
+                        .font(.largeTitle)
+                        .foregroundColor(.secondary)
+                    Text("人物档案读取失败")
+                        .font(.headline)
+                    Text(message)
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                    Button("重新加载") {
+                        Task {
+                            await companion.loadSelectedProfileDetail(
+                                forceReload: true
+                            )
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding()
+            } else {
+                Text("该用户暂时没有人物档案内容。")
+                    .foregroundColor(.secondary)
             }
         }
         .navigationTitle(companion.selectedProfileLabel)
@@ -323,13 +335,6 @@ private struct AddUserProfileView: View {
             prompt: "其他有助于理解用户表达的信息",
             text: $additionalNotes
         )
-        Section {
-            Text(
-                "这些答案由陪护者录入，因此只作为辅助背景，不会被当作患者本人已经确认的表达。"
-            )
-            .font(.footnote)
-            .foregroundColor(.secondary)
-        }
     }
 
     private var markdownSection: some View {
@@ -340,11 +345,6 @@ private struct AddUserProfileView: View {
                     systemImage: "doc.badge.plus"
                 )
                 .font(.headline)
-                Text(
-                    "文件必须是 UTF-8 Markdown，并包含一个 meantbyme-profile JSON 数据块。导入成功后会自动选中新用户。"
-                )
-                .font(.footnote)
-                .foregroundColor(.secondary)
                 Button {
                     fileImporterPresented = true
                 } label: {
