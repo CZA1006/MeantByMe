@@ -17,8 +17,9 @@ Local PCM/text activity
   -> 5 seconds without detected speech ends one expression
   -> Web Demo generates candidates
   -> first candidate is privately read through the earbuds
-  -> a short earbud-microphone capture interprets the patient's response
-  -> “是/嗯/没错” confirms; “不是/不对/换一个” reads another candidate
+  -> the patient responds by voice or with the large Correct / Incorrect buttons
+  -> “是/嗯/没错” or Correct confirms
+  -> “不是/不对/换一个” or Incorrect reads another candidate
   -> confirmed candidate is played by the iPhone speaker in a neutral voice
   -> a fresh capture round starts automatically
 
@@ -67,8 +68,8 @@ matches the active candidate and private prompt.
 
 `stop` is fail-safe and may stop the flow when either reliable interpretation
 detects it. Reject, repeat, and unknown do not authorize playback. High-risk or
-L3 candidates require two distinct private readbacks and two distinct
-affirmation recordings.
+L3 candidates require two distinct private readbacks and either two distinct
+affirmation recordings or two explicit presses of the Correct button.
 
 ## Headset gesture availability
 

@@ -79,6 +79,15 @@ final class AudioRouter: NSObject {
         }
     }
 
+    func playPrivatePromptTone(
+        completion: @escaping (Bool) -> Void
+    ) throws {
+        try playPrivateAudio(
+            Self.makePromptToneWAV(),
+            completion: completion
+        )
+    }
+
     func playPublicAudio(
         _ data: Data,
         completion: @escaping (Bool) -> Void
@@ -258,6 +267,57 @@ final class AudioRouter: NSObject {
             throw AudioRouterError.playbackCouldNotStart
         }
         return decodedPlayer
+    }
+
+    private static func makePromptToneWAV() -> Data {
+        let sampleRate: UInt32 = 44_100
+        let duration = 0.22
+        let sampleCount = Int(Double(sampleRate) * duration)
+        let bytesPerSample: UInt16 = 2
+        var pcm = Data(capacity: sampleCount * Int(bytesPerSample))
+
+        for index in 0..<sampleCount {
+            let time = Double(index) / Double(sampleRate)
+            let attack = min(1, time / 0.008)
+            let decay = exp(-10 * time)
+            let release = min(1, (duration - time) / 0.035)
+            let envelope = attack * decay * max(0, release)
+            let wave = (
+                sin(2 * .pi * 1_318.51 * time)
+                    + 0.28 * sin(2 * .pi * 2_637.02 * time)
+            )
+            let value = Int(wave * envelope * 12_000)
+            appendLittleEndian(Int16(clamping: value), to: &pcm)
+        }
+
+        let pcmSize = UInt32(pcm.count)
+        let byteRate = sampleRate * UInt32(bytesPerSample)
+        var wav = Data()
+        wav.append(contentsOf: "RIFF".utf8)
+        appendLittleEndian(UInt32(36) + pcmSize, to: &wav)
+        wav.append(contentsOf: "WAVE".utf8)
+        wav.append(contentsOf: "fmt ".utf8)
+        appendLittleEndian(UInt32(16), to: &wav)
+        appendLittleEndian(UInt16(1), to: &wav)
+        appendLittleEndian(UInt16(1), to: &wav)
+        appendLittleEndian(sampleRate, to: &wav)
+        appendLittleEndian(byteRate, to: &wav)
+        appendLittleEndian(bytesPerSample, to: &wav)
+        appendLittleEndian(UInt16(16), to: &wav)
+        wav.append(contentsOf: "data".utf8)
+        appendLittleEndian(pcmSize, to: &wav)
+        wav.append(pcm)
+        return wav
+    }
+
+    private static func appendLittleEndian<T: FixedWidthInteger>(
+        _ value: T,
+        to data: inout Data
+    ) {
+        var littleEndian = value.littleEndian
+        withUnsafeBytes(of: &littleEndian) {
+            data.append(contentsOf: $0)
+        }
     }
 
     private func configurePublicRoute() throws {

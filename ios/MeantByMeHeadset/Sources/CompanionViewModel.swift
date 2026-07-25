@@ -27,6 +27,8 @@ final class CompanionViewModel: ObservableObject {
     @Published private(set) var expressionTimerActive = false
     @Published private(set) var expressionTimerVisible = false
     @Published private(set) var expressionCancellationInProgress = false
+    @Published private(set) var confirmationActionInProgress = false
+    @Published private(set) var confirmationControlsReady = false
     @Published var speakerVolumeTestPresented = false
     @Published var userSettingsPresented = false
     @Published private(set) var profiles: [UserProfileSummary] = []
@@ -57,6 +59,7 @@ final class CompanionViewModel: ObservableObject {
     private var privateReadbackCompleted = false
     private var additionalVoiceConfirmationRequired = false
     private var firstConfirmationEvidence: VoiceCommandEvidence?
+    private var firstButtonConfirmationReceived = false
     private var currentPromptID = ""
     private var cancellables: Set<AnyCancellable> = []
     private var profileDetailCache: [String: UserProfileDetail] = [:]
@@ -84,6 +87,25 @@ final class CompanionViewModel: ObservableObject {
         return activeCapturePurpose == .expression
             || activeCapturePurpose == .question
     }
+    var confirmationButtonsVisible: Bool {
+        sessionStarted
+            && mode == .expression
+            && currentCandidate != nil
+            && privateReadbackCompleted
+            && confirmationControlsReady
+            && (
+                activeCapturePurpose == .command
+                    || firstButtonConfirmationReceived
+            )
+    }
+    var canUseConfirmationButtons: Bool {
+        confirmationButtonsVisible && !confirmationActionInProgress
+    }
+    var correctActionLabel: String {
+        firstButtonConfirmationReceived || firstConfirmationEvidence != nil
+            ? "再次确认正确"
+            : "正确"
+    }
     var currentRoundLabel: String {
         mode == .qa ? "本次提问" : "本次表达"
     }
@@ -92,12 +114,6 @@ final class CompanionViewModel: ObservableObject {
             return "正在丢弃这句话…"
         }
         return "丢弃这句话"
-    }
-    var activeGuidance: String {
-        if mode == .qa {
-            return "持续陪伴中。停顿 5 秒后，AI 会补全问题并直接在耳机中回答。"
-        }
-        return "持续陪伴中。停顿 5 秒后自动补全；说“是/嗯”确认，说“不是/不对”更换。"
     }
     var cancelGuidance: String {
         mode == .qa
@@ -367,6 +383,42 @@ final class CompanionViewModel: ObservableObject {
             ? "你已说完，正在理解并回答…"
             : "你已说完，正在理解并补全表达…"
         headset.stopCapture()
+    }
+
+    func confirmCurrentCandidateWithButton() async {
+        guard canUseConfirmationButtons else { return }
+        confirmationActionInProgress = true
+        await suspendVoiceConfirmationCapture()
+        do {
+            if (
+                additionalVoiceConfirmationRequired
+                && firstConfirmationEvidence == nil
+                && !firstButtonConfirmationReceived
+            ) {
+                firstButtonConfirmationReceived = true
+                sessionStatus = "需要再次确认，正在耳机中重新播放完整句子…"
+                try await playCurrentCandidateReadback(additional: true)
+            } else {
+                try await confirmAndPlay(usingLargeButton: true)
+            }
+        } catch {
+            fail(error)
+        }
+        confirmationActionInProgress = false
+    }
+
+    func rejectCurrentCandidateWithButton() async {
+        guard canUseConfirmationButtons else { return }
+        confirmationActionInProgress = true
+        await suspendVoiceConfirmationCapture()
+        do {
+            try await rejectCurrentCandidate(
+                status: "已标记为错误，正在重新生成表达…"
+            )
+        } catch {
+            fail(error)
+        }
+        confirmationActionInProgress = false
     }
 
     func stopCompanion() async {
@@ -783,6 +835,7 @@ final class CompanionViewModel: ObservableObject {
             primaryTranscript: primaryTranscript,
             promptID: currentPromptID
         )
+        try Task.checkCancellation()
         try await applyVoiceInterpretation(interpretation)
     }
 
@@ -829,15 +882,9 @@ final class CompanionViewModel: ObservableObject {
                 try await confirmAndPlay(latestEvidence: evidence)
             }
         case "reject", "back":
-            audioRouter.stop()
-            response = try await gateway.command(
-                "reject_current_candidate"
+            try await rejectCurrentCandidate(
+                status: "患者已否定当前结果，正在准备其他候选…"
             )
-            currentCandidate = nil
-            privateReadbackCompleted = false
-            firstConfirmationEvidence = nil
-            sessionStatus = "患者已否定当前结果，正在准备其他候选…"
-            try await presentFirstCandidate()
         case "repeat":
             try await replayCurrentCandidate(
                 status: "正在重新朗读当前候选。"
@@ -863,7 +910,9 @@ final class CompanionViewModel: ObservableObject {
         }
         currentCandidate = candidate
         privateReadbackCompleted = false
+        confirmationControlsReady = false
         firstConfirmationEvidence = nil
+        firstButtonConfirmationReceived = false
         let prepared = try await gateway.command(
             "prepare_candidate_readback",
             payload: ["candidate_id": candidate.id]
@@ -894,6 +943,7 @@ final class CompanionViewModel: ObservableObject {
         }
         silenceTask?.cancel()
         privateReadbackCompleted = false
+        confirmationControlsReady = false
         currentPromptID = UUID().uuidString
         sessionStatus = additional
             ? "正在耳机中再次完整朗读候选…"
@@ -902,7 +952,6 @@ final class CompanionViewModel: ObservableObject {
             Task { @MainActor in
                 self?.completePrivateCandidateReadback(
                     success: success,
-                    additional: additional,
                     sessionID: sessionID
                 )
             }
@@ -924,7 +973,6 @@ final class CompanionViewModel: ObservableObject {
 
     private func completePrivateCandidateReadback(
         success: Bool,
-        additional: Bool,
         sessionID: String
     ) {
         guard
@@ -938,26 +986,26 @@ final class CompanionViewModel: ObservableObject {
             return
         }
         privateReadbackCompleted = true
-        let instruction = additional
-            ? "请再次说是或嗯来确认，说不是来更换结果。"
-            : "如果正确，请说是、嗯或没错；如果错误，请说不是或不对。"
         do {
-            try audioRouter.playPrivateText(
-                instruction,
-                language: "zh-CN"
-            ) { [weak self] instructionPlayed in
+            try audioRouter.playPrivatePromptTone {
+                [weak self] tonePlayed in
                 Task { @MainActor in
                     guard let self else { return }
                     guard
-                        instructionPlayed,
+                        tonePlayed,
                         self.sessionStarted,
                         self.activeSessionID == sessionID
                     else {
-                        if !instructionPlayed {
+                        if !tonePlayed {
                             self.fail(
                                 AudioRouterError.earbudsNotActive
                             )
                         }
+                        return
+                    }
+                    self.confirmationControlsReady = true
+                    if self.firstButtonConfirmationReceived {
+                        self.sessionStatus = "请再次点击“正确”完成确认，或点击“错误”重新生成"
                         return
                     }
                     self.startVoiceCommandCapture(
@@ -986,7 +1034,8 @@ final class CompanionViewModel: ObservableObject {
     }
 
     private func confirmAndPlay(
-        latestEvidence: VoiceCommandEvidence
+        latestEvidence: VoiceCommandEvidence? = nil,
+        usingLargeButton: Bool = false
     ) async throws {
         guard
             let gateway,
@@ -995,17 +1044,32 @@ final class CompanionViewModel: ObservableObject {
         else {
             return
         }
-        var interpretationIDs = [latestEvidence.interpretationID]
-        if let first = firstConfirmationEvidence {
-            interpretationIDs.insert(first.interpretationID, at: 0)
+        privateReadbackCompleted = false
+        confirmationControlsReady = false
+        var payload: [String: Any] = [
+            "private_readback_completed": true
+        ]
+        if usingLargeButton {
+            if (
+                firstButtonConfirmationReceived
+                || firstConfirmationEvidence != nil
+            ) {
+                payload["additional_button_confirmation"] = true
+            }
+        } else {
+            guard let latestEvidence else { return }
+            var interpretationIDs = [latestEvidence.interpretationID]
+            if let first = firstConfirmationEvidence {
+                interpretationIDs.insert(first.interpretationID, at: 0)
+            }
+            payload["voice_interpretation_ids"] = interpretationIDs
         }
         response = try await gateway.command(
             "confirm_neutral_playback",
-            payload: [
-                "private_readback_completed": true,
-                "voice_interpretation_ids": interpretationIDs,
-            ],
-            confirmationMethod: "voice_semantic"
+            payload: payload,
+            confirmationMethod: usingLargeButton
+                ? "large_button"
+                : "voice_semantic"
         )
         let playbackID = UUID().uuidString
         sessionStatus = "已确认，正在通过手机扬声器播放完整句子…"
@@ -1124,11 +1188,43 @@ final class CompanionViewModel: ObservableObject {
         activeQATurnID = nil
         currentCandidate = nil
         privateReadbackCompleted = false
+        confirmationControlsReady = false
+        confirmationActionInProgress = false
         additionalVoiceConfirmationRequired = false
         firstConfirmationEvidence = nil
+        firstButtonConfirmationReceived = false
         currentPromptID = ""
         captureBoundaryReached = false
         activeCapturePurpose = nil
+    }
+
+    private func suspendVoiceConfirmationCapture() async {
+        silenceTask?.cancel()
+        captureProcessingTask?.cancel()
+        captureProcessingTask = nil
+        captureBoundaryReached = true
+        activeCapturePurpose = nil
+        confirmationControlsReady = false
+        await withCheckedContinuation { continuation in
+            headset.discardCurrentCapture {
+                continuation.resume()
+            }
+        }
+    }
+
+    private func rejectCurrentCandidate(status: String) async throws {
+        guard let gateway, currentCandidate != nil else { return }
+        audioRouter.stop()
+        response = try await gateway.command(
+            "reject_current_candidate"
+        )
+        currentCandidate = nil
+        privateReadbackCompleted = false
+        confirmationControlsReady = false
+        firstConfirmationEvidence = nil
+        firstButtonConfirmationReceived = false
+        sessionStatus = status
+        try await presentFirstCandidate()
     }
 
     private func startHeadsetCapture(

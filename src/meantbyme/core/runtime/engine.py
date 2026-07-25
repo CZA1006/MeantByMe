@@ -536,12 +536,13 @@ class MeantByMeRuntime:
     ) -> None:
         self._require_patient(command)
         self._require_stage(SessionStage.FINAL_REVIEW)
-        if (
-            command.confirmation_method
-            is not ConfirmationMethod.VOICE_SEMANTIC
-        ):
+        if command.confirmation_method not in {
+            ConfirmationMethod.VOICE_SEMANTIC,
+            ConfirmationMethod.LARGE_BUTTON,
+        }:
             raise CommandRejected(
-                "Neutral public playback requires semantic voice confirmation"
+                "Neutral public playback requires semantic voice or "
+                "large-button confirmation"
             )
         if command.payload.get("private_readback_completed") is not True:
             raise CommandRejected(
@@ -554,34 +555,43 @@ class MeantByMeRuntime:
             raise CommandRejected("Neutral readback audio is unavailable")
         risk = classify_risk(candidate.text, candidate.risk_level)
         strict = risk is RiskLevel.HIGH_RISK
-        evidence = command.payload.get("voice_confirmation_evidence")
-        if not isinstance(evidence, dict):
-            raise CommandRejected(
-                "Voice confirmation evidence is required"
-            )
-        if (
-            evidence.get("intent") != "affirm"
-            or evidence.get("consensus") is not True
-            or not isinstance(evidence.get("prompt_id"), str)
-            or not evidence["prompt_id"].strip()
-            or not isinstance(evidence.get("audio_hash"), str)
-            or not evidence["audio_hash"].strip()
-        ):
-            raise CommandRejected(
-                "Voice confirmation evidence is not an agreed affirmation"
-            )
-        if (
-            strict or candidate.source_level == "L3"
-        ):
+        if command.confirmation_method is ConfirmationMethod.VOICE_SEMANTIC:
+            evidence = command.payload.get("voice_confirmation_evidence")
+            if not isinstance(evidence, dict):
+                raise CommandRejected(
+                    "Voice confirmation evidence is required"
+                )
             if (
-                command.payload.get("additional_voice_confirmation")
-                is not True
+                evidence.get("intent") != "affirm"
+                or evidence.get("consensus") is not True
+                or not isinstance(evidence.get("prompt_id"), str)
+                or not evidence["prompt_id"].strip()
+                or not isinstance(evidence.get("audio_hash"), str)
+                or not evidence["audio_hash"].strip()
             ):
                 raise CommandRejected(
-                    "High-risk or L3 expression requires another "
-                    "voice confirmation"
+                    "Voice confirmation evidence is not an agreed affirmation"
                 )
-            self._require_distinct_voice_confirmation_evidence(command)
+            if strict or candidate.source_level == "L3":
+                if (
+                    command.payload.get("additional_voice_confirmation")
+                    is not True
+                ):
+                    raise CommandRejected(
+                        "High-risk or L3 expression requires another "
+                        "voice confirmation"
+                    )
+                self._require_distinct_voice_confirmation_evidence(command)
+        elif (
+            strict or candidate.source_level == "L3"
+        ) and (
+            command.payload.get("additional_button_confirmation")
+            is not True
+        ):
+            raise CommandRejected(
+                "High-risk or L3 expression requires another "
+                "large-button confirmation"
+            )
         self._move(
             SessionStage.PATIENT_CONFIRMED,
             patient_confirmed=True,
@@ -813,8 +823,10 @@ class MeantByMeRuntime:
         )
         neutral_playback = (
             self.session.stage is SessionStage.PATIENT_CONFIRMED
-            and self.session.confirmation_method
-            is ConfirmationMethod.VOICE_SEMANTIC
+            and self.session.confirmation_method in {
+                ConfirmationMethod.VOICE_SEMANTIC,
+                ConfirmationMethod.LARGE_BUTTON,
+            }
             and not self.session.voice_authorized
         )
         if not personal_playback and not neutral_playback:

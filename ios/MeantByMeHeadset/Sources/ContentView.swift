@@ -99,11 +99,55 @@ struct ContentView: View {
                         .buttonStyle(.bordered)
                     }
                 } else {
-                    Text(companion.activeGuidance)
-                        .font(.headline)
-                        .multilineTextAlignment(.center)
-
                     VStack(spacing: 12) {
+                        if companion.confirmationButtonsVisible {
+                            HStack(spacing: 12) {
+                                Button {
+                                    Task {
+                                        await companion
+                                            .confirmCurrentCandidateWithButton()
+                                    }
+                                } label: {
+                                    Label(
+                                        companion.correctActionLabel,
+                                        systemImage: "checkmark.circle.fill"
+                                    )
+                                    .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.green)
+                                .controlSize(.large)
+                                .disabled(
+                                    !companion.canUseConfirmationButtons
+                                )
+                                .accessibilityHint(
+                                    "确认耳机中播放的完整句子正确"
+                                )
+
+                                Button {
+                                    Task {
+                                        await companion
+                                            .rejectCurrentCandidateWithButton()
+                                    }
+                                } label: {
+                                    Label(
+                                        "错误",
+                                        systemImage: "xmark.circle.fill"
+                                    )
+                                    .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.red)
+                                .controlSize(.large)
+                                .disabled(
+                                    !companion.canUseConfirmationButtons
+                                )
+                                .accessibilityHint(
+                                    "否定耳机中播放的句子并重新生成"
+                                )
+                            }
+                        }
+
                         Button {
                             companion.finishSpeaking()
                         } label: {
@@ -153,7 +197,7 @@ struct ContentView: View {
                 }
 
                 Spacer()
-                Text("预测的完整句子将先在耳机中播放，经你确认后再在手机扬声器播放")
+                Text("完整句子将先在耳机播放，经确认后再在手机扬声器播放")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)

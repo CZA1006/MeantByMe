@@ -466,6 +466,8 @@ def create_app(
             if (
                 payload.command
                 is PatientCommandType.CONFIRM_NEUTRAL_PLAYBACK
+                and payload.confirmation_method
+                is ConfirmationMethod.VOICE_SEMANTIC
             ):
                 return await asyncio.to_thread(
                     session.handle_voice_confirmation,

@@ -359,7 +359,10 @@ class DemoSession:
         with self.lock:
             feedback_candidates = self._feedback_candidates(command.command)
             self.runtime.handle(command)
-            confirmed = command.command is PatientCommandType.FINAL_CONFIRM
+            confirmed = command.command in {
+                PatientCommandType.FINAL_CONFIRM,
+                PatientCommandType.CONFIRM_NEUTRAL_PLAYBACK,
+            }
             for candidate in feedback_candidates:
                 self._record_expression_feedback(
                     candidate,
@@ -377,7 +380,10 @@ class DemoSession:
         command: PatientCommandType,
     ) -> list[ExpressionCandidate]:
         selected = self.runtime.session.selected_candidate()
-        if command is PatientCommandType.FINAL_CONFIRM:
+        if command in {
+            PatientCommandType.FINAL_CONFIRM,
+            PatientCommandType.CONFIRM_NEUTRAL_PLAYBACK,
+        }:
             return [selected] if selected is not None else []
         if command is PatientCommandType.NONE_OF_THESE:
             return list(self.runtime.session.candidates)

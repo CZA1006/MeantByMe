@@ -715,6 +715,58 @@ def test_voice_confirmation_uses_server_issued_evidence_and_neutral_audio(
     assert completed["receipt"]["authorization_scope"] is None
 
 
+def test_large_button_confirmation_does_not_require_voice_evidence(
+    tmp_path: Path,
+) -> None:
+    with TestClient(create_app(settings=_settings(tmp_path))) as client:
+        created, headers = _create_session(client)
+        session_id = created["session"]["session_id"]
+        _command(client, session_id, headers, "start_capture")
+        _command(client, session_id, headers, "stop_capture")
+        candidates = _command(
+            client,
+            session_id,
+            headers,
+            "proceed_without_heard_confirmation",
+        )
+        candidate = candidates["session"]["candidates"][0]
+        _command(
+            client,
+            session_id,
+            headers,
+            "prepare_candidate_readback",
+            payload={"candidate_id": candidate["id"]},
+        )
+
+        confirmed = _command(
+            client,
+            session_id,
+            headers,
+            "confirm_neutral_playback",
+            payload={"private_readback_completed": True},
+            confirmation_method="large_button",
+        )
+        completed = _command(
+            client,
+            session_id,
+            headers,
+            "playback_completed",
+            payload={
+                "playback_id": "neutral-button-confirmed-001",
+                "output_channel": "iphone_speaker",
+            },
+        )
+
+    assert confirmed["session"]["stage"] == SessionStage.PATIENT_CONFIRMED
+    assert confirmed["dynamic_memory"]["feedback_status"] == (
+        "positive_recorded"
+    )
+    assert confirmed["audio"]["personal_available"] is False
+    assert completed["session"]["stage"] == SessionStage.COMPLETED
+    assert completed["receipt"]["confirmation_method"] == "large_button"
+    assert completed["receipt"]["voice_profile_id"] is None
+
+
 def test_cloud_mode_fails_closed_without_demo_token(tmp_path: Path) -> None:
     settings = _settings(
         tmp_path,
