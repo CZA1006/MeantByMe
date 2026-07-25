@@ -5,6 +5,93 @@ enum CompanionMode: String {
     case qa
 }
 
+struct UserProfileSummary: Decodable, Identifiable, Hashable {
+    let profileRef: String
+    let label: String
+    let defaultLanguage: String
+    let languages: [String]
+    let source: String
+    let simulated: Bool?
+    let memoryCount: Int?
+
+    var id: String { profileRef }
+
+    enum CodingKeys: String, CodingKey {
+        case label, languages, source, simulated
+        case profileRef = "profile_ref"
+        case defaultLanguage = "default_language"
+        case memoryCount = "memory_count"
+    }
+}
+
+struct UserProfileMemory: Decodable, Identifiable {
+    let id: String
+    let text: String
+    let kind: String
+    let verificationLevel: String
+    let source: String
+    let sensitivity: String
+    let promptEligible: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id, text, kind, source, sensitivity
+        case verificationLevel = "verification_level"
+        case promptEligible = "prompt_eligible"
+    }
+}
+
+struct UserProfileDetail: Decodable {
+    let profileRef: String
+    let profileId: String
+    let label: String
+    let displayName: String
+    let defaultLanguage: String
+    let languages: [String]
+    let source: String
+    let simulated: Bool
+    let memoryCount: Int
+    let memories: [UserProfileMemory]
+
+    enum CodingKeys: String, CodingKey {
+        case label, languages, source, simulated, memories
+        case profileRef = "profile_ref"
+        case profileId = "profile_id"
+        case displayName = "display_name"
+        case defaultLanguage = "default_language"
+        case memoryCount = "memory_count"
+    }
+}
+
+struct ProfilesResponse: Decodable {
+    let profiles: [UserProfileSummary]
+}
+
+struct ProfileSummaryResponse: Decodable {
+    let profile: UserProfileSummary
+}
+
+struct ProfileDetailResponse: Decodable {
+    let profile: UserProfileDetail
+}
+
+struct NewUserProfileInput: Encodable {
+    let displayName: String
+    let language: String
+    let background: String
+    let relationships: String
+    let routines: String
+    let interests: String
+    let communicationPreferences: String
+    let additionalNotes: String
+
+    enum CodingKeys: String, CodingKey {
+        case language, background, relationships, routines, interests
+        case displayName = "display_name"
+        case communicationPreferences = "communication_preferences"
+        case additionalNotes = "additional_notes"
+    }
+}
+
 struct Candidate: Decodable, Identifiable {
     let id: String
     let text: String

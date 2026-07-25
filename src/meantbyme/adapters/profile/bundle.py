@@ -44,7 +44,7 @@ class ProfilePatient(ProfileModel):
 
 
 class ProfileConsent(ProfileModel):
-    scope: Literal["demo_testing"]
+    scope: Literal["demo_testing", "app_personalization"]
     cloud_processing_allowed: bool
 
 
@@ -55,7 +55,7 @@ class ProfileVoiceConsent(ProfileModel):
 
 
 class ProfileMemory(ProfileModel):
-    simulated: Literal[True]
+    simulated: bool
     id: str = Field(min_length=1, max_length=160)
     memory_type: Literal["semantic", "context"]
     verification_level: VerificationLevel
@@ -92,20 +92,28 @@ class ProfileMemory(ProfileModel):
 
 class ProfileBundle(ProfileModel):
     schema_version: Literal[1]
-    simulated: Literal[True]
+    simulated: bool
     profile_id: str = Field(min_length=1, max_length=80)
     label: str = Field(min_length=1, max_length=160)
     patient: ProfilePatient
     consent: ProfileConsent
-    voice_consent: ProfileVoiceConsent
+    voice_consent: ProfileVoiceConsent | None = None
     memories: list[ProfileMemory] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def require_consistent_patient(self) -> "ProfileBundle":
         if self.profile_id != self.patient.patient_id:
             raise ValueError("profile_id must equal patient.patient_id")
+        if self.simulated and self.consent.scope != "demo_testing":
+            raise ValueError("simulated profile requires demo_testing scope")
+        if not self.simulated and self.consent.scope != "app_personalization":
+            raise ValueError(
+                "non-simulated profile requires app_personalization scope"
+            )
         memory_ids: set[str] = set()
         for memory in self.memories:
+            if memory.simulated != self.simulated:
+                raise ValueError("memory simulated flag must match profile")
             if memory.id in memory_ids:
                 raise ValueError(f"duplicate profile memory id: {memory.id}")
             memory_ids.add(memory.id)
@@ -230,12 +238,13 @@ def seed_profile_repository(
             semantic_count += 1
 
     voice = profile.voice_consent
-    repository.grant_voice_consent(
-        patient_id,
-        voice.authorization_id,
-        voice.consent_session_id,
-        voice.voice_profile_id,
-    )
+    if voice is not None:
+        repository.grant_voice_consent(
+            patient_id,
+            voice.authorization_id,
+            voice.consent_session_id,
+            voice.voice_profile_id,
+        )
     return ProfileImportResult(
         patient_id=patient_id,
         semantic_count=semantic_count,

@@ -25,6 +25,10 @@ struct ContentView: View {
                 .disabled(companion.sessionStarted)
 
                 VStack(alignment: .leading, spacing: 12) {
+                    Label(
+                        "当前用户：\(companion.selectedProfileLabel)",
+                        systemImage: "person.crop.circle"
+                    )
                     Label(companion.headsetStatus, systemImage: "dot.radiowaves.left.and.right")
                     Label(companion.sessionStatus, systemImage: "waveform")
                     Label(companion.safetyStatus, systemImage: "checkmark.shield")
@@ -34,6 +38,41 @@ struct ContentView: View {
                 .background(Color(.secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 16))
 
+                if companion.expressionTimerVisible {
+                    HStack(spacing: 16) {
+                        Image(
+                            systemName: companion.expressionTimerActive
+                                ? "waveform.circle.fill"
+                                : "checkmark.circle.fill"
+                        )
+                        .font(.system(size: 34))
+                        .foregroundColor(
+                            companion.expressionTimerActive
+                                ? .indigo
+                                : .green
+                        )
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(
+                                companion.expressionTimerActive
+                                    ? "本次表达正在计时"
+                                    : "本次表达计时结束"
+                            )
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            Text(
+                                "\(companion.expressionElapsedSeconds) 秒"
+                            )
+                            .font(.system(size: 30, weight: .bold))
+                            .monospacedDigit()
+                        }
+                        Spacer()
+                    }
+                    .padding()
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                }
+
                 if !companion.headsetConnected {
                     Button("连接 Viaim 耳机") {
                         companion.connectHeadset()
@@ -41,11 +80,25 @@ struct ContentView: View {
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
                 } else if !companion.sessionStarted {
-                    Button("开始陪伴") {
-                        Task { await companion.startCompanion() }
+                    VStack(spacing: 12) {
+                        Button("开始陪伴") {
+                            Task { await companion.startCompanion() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+
+                        Button {
+                            Task {
+                                await companion.beginSpeakerVolumeTest()
+                            }
+                        } label: {
+                            Label(
+                                "测试并调节手机扬声器",
+                                systemImage: "speaker.wave.3.fill"
+                            )
+                        }
+                        .buttonStyle(.bordered)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
                 } else {
                     Text("持续陪伴中。停顿 8 秒后自动补全；说“是/嗯”确认，说“不是/不对”更换。")
                         .font(.headline)
@@ -64,6 +117,29 @@ struct ContentView: View {
             }
             .padding(24)
             .navigationBarHidden(true)
+            .overlay(alignment: .topTrailing) {
+                Button {
+                    companion.userSettingsPresented = true
+                } label: {
+                    Image(systemName: "gearshape.fill")
+                        .font(.title3)
+                        .padding(10)
+                }
+                .accessibilityLabel("用户设置")
+            }
+            .sheet(
+                isPresented: $companion.speakerVolumeTestPresented,
+                onDismiss: {
+                    companion.endSpeakerVolumeTest()
+                }
+            ) {
+                SpeakerVolumeTestView()
+                    .environmentObject(companion)
+            }
+            .sheet(isPresented: $companion.userSettingsPresented) {
+                UserSettingsView()
+                    .environmentObject(companion)
+            }
             .alert(
                 "需要处理",
                 isPresented: Binding(
@@ -74,6 +150,64 @@ struct ContentView: View {
                 Button("好", role: .cancel) {}
             } message: {
                 Text(companion.errorMessage ?? "")
+            }
+        }
+    }
+}
+
+private struct SpeakerVolumeTestView: View {
+    @EnvironmentObject private var companion: CompanionViewModel
+
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 28) {
+                Image(systemName: "iphone.radiowaves.left.and.right")
+                    .font(.system(size: 64))
+                    .foregroundColor(.indigo)
+
+                VStack(spacing: 8) {
+                    Text("手机扬声器音量")
+                        .font(.title2.bold())
+                    Text("当前已临时切换到 iPhone 扬声器。拖动滑块，或使用手机音量键调节。")
+                        .multilineTextAlignment(.center)
+                        .foregroundColor(.secondary)
+                }
+
+                HStack(spacing: 12) {
+                    Image(systemName: "speaker.fill")
+                    SystemVolumeSlider()
+                        .frame(height: 36)
+                    Image(systemName: "speaker.wave.3.fill")
+                }
+                .padding()
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+
+                Button {
+                    companion.repeatSpeakerVolumeTest()
+                } label: {
+                    Label("再次播放测试语音", systemImage: "play.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+
+                Text("测试结束后会恢复耳机路由。正式确认内容仍会自动切换到手机扬声器播放。")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+
+                Spacer()
+            }
+            .padding(24)
+            .navigationTitle("扬声器测试")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") {
+                        companion.endSpeakerVolumeTest()
+                    }
+                }
             }
         }
     }

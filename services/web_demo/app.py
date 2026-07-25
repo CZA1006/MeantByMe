@@ -17,8 +17,9 @@ from fastapi import (
     Response,
 )
 from fastapi.responses import FileResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from meantbyme.adapters.audio import AudioStore, AudioStoreError
 from meantbyme.adapters.profile import ProfileBundleError
@@ -31,6 +32,7 @@ from meantbyme.core.domain import (
 from meantbyme.core.runtime import CommandRejected, ProviderContractError
 
 from services.web_demo.config import WebDemoSettings
+from services.web_demo.profile_storage import ProfileStorageError
 from services.web_demo.sessions import (
     DemoSession,
     DemoSessionStore,
@@ -51,6 +53,31 @@ class CommandRequest(APIModel):
     command: PatientCommandType
     payload: dict[str, Any] = Field(default_factory=dict)
     confirmation_method: ConfirmationMethod | None = None
+
+
+class CreateProfileRequest(APIModel):
+    display_name: str = Field(min_length=1, max_length=120)
+    language: str = Field(default="zh", min_length=2, max_length=12)
+    background: str = Field(default="", max_length=2000)
+    relationships: str = Field(default="", max_length=2000)
+    routines: str = Field(default="", max_length=2000)
+    interests: str = Field(default="", max_length=2000)
+    communication_preferences: str = Field(default="", max_length=2000)
+    additional_notes: str = Field(default="", max_length=2000)
+
+    @model_validator(mode="after")
+    def require_profile_content(self) -> "CreateProfileRequest":
+        fields = (
+            self.background,
+            self.relationships,
+            self.routines,
+            self.interests,
+            self.communication_preferences,
+            self.additional_notes,
+        )
+        if not any(value.strip() for value in fields):
+            raise ValueError("at least one profile answer is required")
+        return self
 
 
 def create_app(
@@ -77,6 +104,16 @@ def create_app(
     application.mount(
         "/assets", StaticFiles(directory=static_root), name="assets"
     )
+
+    @application.exception_handler(ProfileStorageError)
+    async def profile_storage_error_handler(
+        _: Request,
+        __: ProfileStorageError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "profile database unavailable"},
+        )
 
     async def require_demo_access(request: Request) -> None:
         configured = active_settings.demo_token
@@ -118,6 +155,9 @@ def create_app(
             "demo_access_configured": bool(active_settings.demo_token),
             "max_audio_seconds": active_settings.max_audio_seconds,
             "viaim_earbud_api": True,
+            "profile_database_backend": (
+                active_settings.profile_database_backend
+            ),
         }
 
     @application.post(
@@ -148,6 +188,46 @@ def create_app(
             "notice": SIMULATED_NOTICE,
             "profiles": active_store.list_profiles(),
         }
+
+    @application.get(
+        "/api/profiles/{profile_ref}",
+        dependencies=[Depends(require_demo_access)],
+    )
+    async def get_profile(profile_ref: str) -> dict[str, Any]:
+        try:
+            profile = await asyncio.to_thread(
+                active_store.profile_detail, profile_ref
+            )
+        except ProfileBundleError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return {"notice": SIMULATED_NOTICE, "profile": profile}
+
+    @application.post(
+        "/api/profiles/questionnaire",
+        dependencies=[Depends(require_demo_access)],
+    )
+    async def create_profile(
+        payload: CreateProfileRequest,
+    ) -> dict[str, Any]:
+        try:
+            profile = await asyncio.to_thread(
+                active_store.create_profile,
+                display_name=payload.display_name.strip(),
+                language=payload.language,
+                answers={
+                    "background": payload.background,
+                    "relationships": payload.relationships,
+                    "routines": payload.routines,
+                    "interests": payload.interests,
+                    "communication_preferences": (
+                        payload.communication_preferences
+                    ),
+                    "additional_notes": payload.additional_notes,
+                },
+            )
+        except ProfileBundleError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return {"notice": SIMULATED_NOTICE, "profile": profile}
 
     @application.post(
         "/api/profiles", dependencies=[Depends(require_demo_access)]

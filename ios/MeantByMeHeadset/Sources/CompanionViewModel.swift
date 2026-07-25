@@ -7,6 +7,17 @@ final class CompanionViewModel: ObservableObject {
     @Published private(set) var sessionStarted = false
     @Published private(set) var sessionStatus = "等待陪护者开始"
     @Published private(set) var safetyStatus = "仅使用系统中性音"
+    @Published private(set) var expressionElapsedSeconds = 0
+    @Published private(set) var expressionTimerActive = false
+    @Published private(set) var expressionTimerVisible = false
+    @Published var speakerVolumeTestPresented = false
+    @Published var userSettingsPresented = false
+    @Published private(set) var profiles: [UserProfileSummary] = []
+    @Published private(set) var selectedProfileRef: String
+    @Published private(set) var selectedProfileLabel: String
+    @Published private(set) var selectedProfileLanguage: String
+    @Published private(set) var selectedProfileDetail: UserProfileDetail?
+    @Published private(set) var profilesLoading = false
     @Published var errorMessage: String?
 
     let headset = ViaimHeadsetService()
@@ -14,8 +25,10 @@ final class CompanionViewModel: ObservableObject {
     private var gateway: GatewayClient?
     private var response: DemoResponse?
     private var silenceTask: Task<Void, Never>?
+    private var expressionTimerTask: Task<Void, Never>?
     private var captureProcessingTask: Task<Void, Never>?
     private var safetyAbortInProgress = false
+    private var captureBoundaryReached = false
     private var activeSessionID: String?
     private var stoppedSessionRecoveryAttempted = false
     private var currentCandidate: Candidate?
@@ -27,8 +40,19 @@ final class CompanionViewModel: ObservableObject {
 
     var headsetConnected: Bool { headset.connected }
     var headsetStatus: String { headset.status }
+    var canEditCurrentUser: Bool { !sessionStarted }
 
     init() {
+        let defaults = UserDefaults.standard
+        selectedProfileRef = defaults.string(
+            forKey: "selected_profile_ref"
+        ) ?? "lin_yue_demo"
+        selectedProfileLabel = defaults.string(
+            forKey: "selected_profile_label"
+        ) ?? "Lin Yue（演示用户）"
+        selectedProfileLanguage = defaults.string(
+            forKey: "selected_profile_language"
+        ) ?? "zh"
         do {
             gateway = try GatewayClient()
         } catch {
@@ -50,10 +74,126 @@ final class CompanionViewModel: ObservableObject {
         headset.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }.store(in: &cancellables)
+        Task { [weak self] in
+            await self?.refreshProfiles()
+        }
     }
 
     func connectHeadset() {
         headset.initializeAndConnect()
+    }
+
+    func refreshProfiles() async {
+        guard let gateway, !profilesLoading else { return }
+        profilesLoading = true
+        defer { profilesLoading = false }
+        do {
+            let loaded = try await gateway.listProfiles()
+            profiles = loaded
+            if !sessionStarted {
+                if let selected = loaded.first(where: {
+                    $0.profileRef == selectedProfileRef
+                }) {
+                    applySelectedProfile(selected)
+                } else if let fallback = loaded.first(where: {
+                    $0.profileRef == "lin_yue_demo"
+                }) ?? loaded.first {
+                    applySelectedProfile(fallback)
+                }
+            }
+            await loadSelectedProfileDetail()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func selectProfile(_ profileRef: String) async {
+        guard !sessionStarted else { return }
+        guard let profile = profiles.first(where: {
+            $0.profileRef == profileRef
+        }) else { return }
+        applySelectedProfile(profile)
+        await loadSelectedProfileDetail()
+    }
+
+    func loadSelectedProfileDetail() async {
+        guard let gateway else { return }
+        do {
+            selectedProfileDetail = try await gateway.profileDetail(
+                profileRef: selectedProfileRef
+            )
+        } catch {
+            selectedProfileDetail = nil
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func createUserProfile(
+        _ input: NewUserProfileInput
+    ) async -> Bool {
+        guard let gateway, !sessionStarted else { return false }
+        do {
+            let created = try await gateway.createProfile(input)
+            profiles = try await gateway.listProfiles()
+            applySelectedProfile(created)
+            await loadSelectedProfileDetail()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func importUserProfileMarkdown(_ data: Data) async -> Bool {
+        guard let gateway, !sessionStarted else { return false }
+        do {
+            let created = try await gateway.importProfileMarkdown(data)
+            profiles = try await gateway.listProfiles()
+            applySelectedProfile(created)
+            await loadSelectedProfileDetail()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    private func applySelectedProfile(_ profile: UserProfileSummary) {
+        selectedProfileRef = profile.profileRef
+        selectedProfileLabel = profile.label
+        selectedProfileLanguage = profile.defaultLanguage
+        let defaults = UserDefaults.standard
+        defaults.set(profile.profileRef, forKey: "selected_profile_ref")
+        defaults.set(profile.label, forKey: "selected_profile_label")
+        defaults.set(
+            profile.defaultLanguage,
+            forKey: "selected_profile_language"
+        )
+    }
+
+    func beginSpeakerVolumeTest() async {
+        guard !sessionStarted else { return }
+        do {
+            try await audioRouter.beginSpeakerVolumeTest()
+            speakerVolumeTestPresented = true
+            try audioRouter.playSpeakerVolumeTest()
+        } catch {
+            audioRouter.endSpeakerVolumeTest()
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func repeatSpeakerVolumeTest() {
+        do {
+            try audioRouter.playSpeakerVolumeTest()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func endSpeakerVolumeTest() {
+        audioRouter.endSpeakerVolumeTest()
+        speakerVolumeTestPresented = false
     }
 
     func startCompanion() async {
@@ -63,6 +203,7 @@ final class CompanionViewModel: ObservableObject {
             errorMessage = "问答模式尚未接入；本版本先实现“替患者表达”。"
             return
         }
+        endSpeakerVolumeTest()
         sessionStarted = true
         safetyStatus = "候选仅在耳机播放；语音确认后以中性音外放"
         do {
@@ -77,6 +218,7 @@ final class CompanionViewModel: ObservableObject {
         safetyAbortInProgress = true
         let sessionIDToStop = activeSessionID
         silenceTask?.cancel()
+        stopExpressionTimer(reset: true)
         captureProcessingTask?.cancel()
         activeSessionID = nil
         sessionStatus = "正在结束陪伴并丢弃未完成的表达…"
@@ -100,15 +242,20 @@ final class CompanionViewModel: ObservableObject {
             return
         }
         silenceTask?.cancel()
+        stopExpressionTimer(reset: true)
         captureProcessingTask?.cancel()
         resetRoundState()
         activeSessionID = nil
-        let created = try await gateway.createSession()
+        let created = try await gateway.createSession(
+            language: selectedProfileLanguage,
+            profileRef: selectedProfileRef
+        )
         response = created
         activeSessionID = created.session.sessionId
         stoppedSessionRecoveryAttempted = false
         response = try await gateway.command("start_capture")
         sessionStatus = "正在持续聆听；停顿 8 秒后自动理解本次表达"
+        captureBoundaryReached = false
         headset.startCapture(
             .expression,
             sessionID: created.session.sessionId
@@ -116,11 +263,18 @@ final class CompanionViewModel: ObservableObject {
     }
 
     private func scheduleSilenceBoundary(_ purpose: CapturePurpose) {
-        guard sessionStarted, !safetyAbortInProgress else { return }
+        guard
+            sessionStarted,
+            !safetyAbortInProgress,
+            !captureBoundaryReached
+        else {
+            return
+        }
         silenceTask?.cancel()
         let delay: UInt64
         switch purpose {
         case .expression:
+            startExpressionTimerIfNeeded()
             delay = 8_000_000_000
             sessionStatus = "检测到患者说话；继续说话会重新计算 8 秒"
         case .command:
@@ -130,6 +284,10 @@ final class CompanionViewModel: ObservableObject {
         silenceTask = Task {
             try? await Task.sleep(nanoseconds: delay)
             guard !Task.isCancelled else { return }
+            captureBoundaryReached = true
+            if purpose == .expression {
+                stopExpressionTimer(reset: false)
+            }
             sessionStatus = purpose == .expression
                 ? "已静默 8 秒，正在结束本次表达…"
                 : "正在理解患者的语音回应…"
@@ -141,6 +299,9 @@ final class CompanionViewModel: ObservableObject {
         guard !Task.isCancelled else { return }
         guard sessionStarted, !safetyAbortInProgress else { return }
         guard capture.sessionID == activeSessionID else { return }
+        if capture.purpose == .expression {
+            stopExpressionTimer(reset: false)
+        }
         guard !capture.pcm.isEmpty else {
             await restartAfterEmptyCapture(capture.purpose)
             return
@@ -196,7 +357,10 @@ final class CompanionViewModel: ObservableObject {
                 throw error
             }
             stoppedSessionRecoveryAttempted = true
-            let created = try await gateway.createSession()
+            let created = try await gateway.createSession(
+                language: selectedProfileLanguage,
+                profileRef: selectedProfileRef
+            )
             activeSessionID = created.session.sessionId
             response = created
             response = try await gateway.command("start_capture")
@@ -407,6 +571,7 @@ final class CompanionViewModel: ObservableObject {
             ? "等待患者再次语音确认或否定"
             : "等待患者说“是/嗯”或“不是/不对”"
         safetyStatus = "语音回应需经两路识别一致后才会确认"
+        captureBoundaryReached = false
         headset.startCapture(.command, sessionID: sessionID)
     }
 
@@ -430,27 +595,40 @@ final class CompanionViewModel: ObservableObject {
         let playbackID = UUID().uuidString
         sessionStatus = "已确认，正在通过手机扬声器播放完整句子…"
         safetyStatus = "外放使用系统中性音，不使用患者克隆声音"
-        try audioRouter.playPublicAudio(audio) { [weak self] success in
-            Task { @MainActor in
-                guard let self, let gateway = self.gateway else { return }
-                do {
-                    self.response = try await gateway.command(
-                        success ? "playback_completed" : "playback_failed",
-                        payload: [
-                            "playback_id": playbackID,
-                            "output_channel": "iphone_speaker",
-                        ]
-                    )
-                    if success {
-                        self.sessionStatus = "本次表达已播放，继续等待下一次表达"
-                        try await self.beginNextExpressionRound()
-                    } else {
-                        self.sessionStatus = "手机播放失败；本次不会写入确认记忆"
+        do {
+            try audioRouter.playPublicAudio(audio) { [weak self] success in
+                Task { @MainActor in
+                    guard let self, let gateway = self.gateway else { return }
+                    do {
+                        self.response = try await gateway.command(
+                            success
+                                ? "playback_completed"
+                                : "playback_failed",
+                            payload: [
+                                "playback_id": playbackID,
+                                "output_channel": "iphone_speaker",
+                            ]
+                        )
+                        if success {
+                            self.sessionStatus = "本次表达已播放，继续等待下一次表达"
+                            try await self.beginNextExpressionRound()
+                        } else {
+                            self.sessionStatus = "手机播放失败；本次不会写入确认记忆"
+                        }
+                    } catch {
+                        self.fail(error)
                     }
-                } catch {
-                    self.fail(error)
                 }
             }
+        } catch {
+            _ = try? await gateway.command(
+                "playback_failed",
+                payload: [
+                    "playback_id": playbackID,
+                    "output_channel": "iphone_speaker",
+                ]
+            )
+            throw error
         }
     }
 
@@ -466,10 +644,13 @@ final class CompanionViewModel: ObservableObject {
         }
         switch purpose {
         case .expression:
+            stopExpressionTimer(reset: true)
             sessionStatus = "没有收到有效表达，继续等待患者说话。"
+            captureBoundaryReached = false
             headset.startCapture(.expression, sessionID: sessionID)
         case .command:
             sessionStatus = "没有收到确认语音，请再说一次。"
+            captureBoundaryReached = false
             headset.startCapture(.command, sessionID: sessionID)
         }
     }
@@ -500,9 +681,39 @@ final class CompanionViewModel: ObservableObject {
         additionalVoiceConfirmationRequired = false
         firstConfirmationEvidence = nil
         currentPromptID = ""
+        captureBoundaryReached = false
+    }
+
+    private func startExpressionTimerIfNeeded() {
+        guard expressionTimerTask == nil else { return }
+        expressionElapsedSeconds = 0
+        expressionTimerVisible = true
+        expressionTimerActive = true
+        let startedAt = Date()
+        expressionTimerTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard !Task.isCancelled, let self else { return }
+                self.expressionElapsedSeconds = max(
+                    1,
+                    Int(Date().timeIntervalSince(startedAt))
+                )
+            }
+        }
+    }
+
+    private func stopExpressionTimer(reset: Bool) {
+        expressionTimerTask?.cancel()
+        expressionTimerTask = nil
+        expressionTimerActive = false
+        if reset {
+            expressionElapsedSeconds = 0
+            expressionTimerVisible = false
+        }
     }
 
     private func fail(_ error: Error) {
+        stopExpressionTimer(reset: false)
         errorMessage = error.localizedDescription
         sessionStatus = "发生错误，本次未确认或外放"
         safetyStatus = "仅使用系统中性音"
@@ -520,6 +731,7 @@ final class CompanionViewModel: ObservableObject {
         let sessionIDToStop = activeSessionID
         safetyAbortInProgress = true
         silenceTask?.cancel()
+        stopExpressionTimer(reset: true)
         captureProcessingTask?.cancel()
         activeSessionID = nil
         audioRouter.stop()

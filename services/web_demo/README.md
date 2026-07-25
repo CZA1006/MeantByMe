@@ -52,7 +52,9 @@ GATEWAY_TIMEOUT_SECONDS=35
 WEB_DEMO_VOICE_PROFILE_ID=cixingnansheng
 WEB_DEMO_MAX_AUDIO_SECONDS=20
 WEB_DEMO_MAX_PROFILE_BYTES=65536
-WEB_DEMO_MAX_UPLOADED_PROFILES=20
+WEB_DEMO_MAX_UPLOADED_PROFILES=500
+WEB_DEMO_PROFILE_DB_BACKEND=sqlite
+WEB_DEMO_DATABASE_PATH=/tmp/meantbyme-web-demo/profiles.sqlite3
 ```
 
 Then run the same module. The user enters `WEB_DEMO_TOKEN` in the browser.
@@ -61,10 +63,22 @@ stays server-side.
 
 ## Zeabur
 
-Create a second Git service from the same repository and name the service
-exactly `meantbyme-demo`. Zeabur will auto-match
-`Dockerfile.meantbyme-demo` for that service. Do not change the existing
-`meantbyme` gateway service.
+The deployed service roles are:
+
+```text
+iOS app
+  -> meantbyme-ios (public session/profile BFF)
+  -> meantbyme-gateway (provider gateway)
+  -> model providers
+
+meantbyme-ios
+  -> mysql (independent Zeabur database service, private network only)
+```
+
+`meantbyme-ios` is built with `Dockerfile.meantbyme-demo`. The service name is
+historical: it is the server API used by the native iOS app, not an iOS binary
+running in Zeabur. Keep `meantbyme-gateway`, `meantbyme-ios`, and `mysql` as
+three independent services.
 
 Set:
 
@@ -78,18 +92,44 @@ GATEWAY_MAX_ATTEMPTS=2
 WEB_DEMO_VOICE_PROFILE_ID=cixingnansheng
 WEB_DEMO_MAX_AUDIO_SECONDS=20
 WEB_DEMO_MAX_PROFILE_BYTES=65536
-WEB_DEMO_MAX_UPLOADED_PROFILES=20
+WEB_DEMO_MAX_UPLOADED_PROFILES=500
+WEB_DEMO_PROFILE_DB_BACKEND=mysql
+WEB_DEMO_MYSQL_DATABASE=meantbyme
+WEB_DEMO_MYSQL_AUTO_CREATE_SCHEMA=false
 ```
 
-Do not set `STEPFUN_API_KEY` on the Web Demo service. Only the existing
+Set these variables on `meantbyme-ios`, not on `meantbyme-gateway`. The Zeabur
+MySQL service automatically exposes `MYSQL_HOST`, `MYSQL_PORT`,
+`MYSQL_USERNAME`, `MYSQL_PASSWORD`, and `MYSQL_DATABASE` to other services in
+the same project. This application accepts those names directly. If automatic
+exposure is disabled, set the equivalent scoped overrides on `meantbyme-ios`:
+
+```dotenv
+WEB_DEMO_MYSQL_HOST=<MySQL private-network host>
+WEB_DEMO_MYSQL_PORT=3306
+WEB_DEMO_MYSQL_USER=<database user>
+WEB_DEMO_MYSQL_PASSWORD=<database password>
+```
+
+Do not set MySQL credentials in the native iOS app or on
+`meantbyme-gateway`. Do not set `STEPFUN_API_KEY` on `meantbyme-ios`; only the
 provider gateway owns that secret.
+
+Create the database/table with
+[`deploy/mysql/init_profiles.sql`](../../deploy/mysql/init_profiles.sql).
+The iOS-created and Markdown-imported user profiles are then stored in the
+independent MySQL service; neither application service needs a database
+persistent volume. Prefer the MySQL service's private-network hostname rather
+than exposing port 3306 publicly. Store the password in Zeabur Secrets, never
+in source control.
 
 After the deployment is healthy:
 
-1. Open the Web Demo service's **Networking** tab.
-2. Generate `meantbyme-demo.zeabur.app`.
+1. Open the `meantbyme-ios` service's **Networking** tab.
+2. Generate or retain its public HTTPS domain.
 3. Route it to container port `8080`.
-4. Verify `GET /api/health`.
+4. Verify `GET /api/health` returns
+   `"profile_database_backend": "mysql"`.
 
 Cloud mode fails closed when `WEB_DEMO_TOKEN` or `GATEWAY_TOKEN` is missing.
 Microphone capture stops automatically at 20 seconds, and the BFF rejects
@@ -100,4 +140,6 @@ Profile Markdown must follow
 [`docs/PROFILE_TEST_BUNDLES.md`](../../docs/PROFILE_TEST_BUNDLES.md). Only its
 validated `meantbyme-profile` JSON block is imported. Gold, Silver, and
 unverified provenance remain distinct, and cloud mode requires explicit
-`cloud_processing_allowed`.
+`cloud_processing_allowed`. Profiles created through the caregiver
+questionnaire are always stored as Silver caregiver context and cannot become
+patient-confirmed Gold memory.

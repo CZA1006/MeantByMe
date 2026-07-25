@@ -84,7 +84,7 @@ class MeantByMeRuntime:
         session_id: str,
         patient_id: str,
         language: str,
-        voice_profile_id: str,
+        voice_profile_id: str | None,
         situation: str | None = None,
     ) -> ExpressionSession:
         if self._session is not None:
@@ -726,8 +726,16 @@ class MeantByMeRuntime:
             },
         )
 
+        voice_profile_id = self.session.voice_profile_id
+        if not voice_profile_id:
+            self._replace(failure_status="voice_profile_missing")
+            self._emit(
+                RuntimeEventType.VOICE_AUTHORIZATION_BLOCKED,
+                {"reason": "voice_profile_missing"},
+            )
+            return
         active_consent = self._repository.has_active_voice_consent(
-            self.session.patient_id, self.session.voice_profile_id
+            self.session.patient_id, voice_profile_id
         )
         if not active_consent:
             self._replace(failure_status="long_term_voice_consent_missing")
@@ -742,7 +750,7 @@ class MeantByMeRuntime:
             patient_id=self.session.patient_id,
             final_text=candidate.text,
             language=candidate.language,
-            voice_profile_id=self.session.voice_profile_id,
+            voice_profile_id=voice_profile_id,
             authorization_scope="this_expression",
             confirmation_method=command.confirmation_method,
             authorized_at=datetime.now(UTC),
@@ -760,7 +768,7 @@ class MeantByMeRuntime:
         )
 
         consent_still_active = self._repository.has_active_voice_consent(
-            self.session.patient_id, self.session.voice_profile_id
+            self.session.patient_id, voice_profile_id
         )
         if not can_use_personal_voice(self.session, consent_still_active):
             self._replace(failure_status="voice_policy_blocked")

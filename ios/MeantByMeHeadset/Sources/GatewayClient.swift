@@ -36,7 +36,10 @@ actor GatewayClient {
         demoToken = token
     }
 
-    func createSession(language: String = "zh", profileRef: String = "lin_yue_demo") async throws -> DemoResponse {
+    func createSession(
+        language: String = "zh",
+        profileRef: String = "lin_yue_demo"
+    ) async throws -> DemoResponse {
         let body = try JSONSerialization.data(withJSONObject: [
             "language": language,
             "profile_ref": profileRef,
@@ -54,6 +57,57 @@ actor GatewayClient {
         sessionId = response.session.sessionId
         sessionToken = token
         return response
+    }
+
+    func listProfiles() async throws -> [UserProfileSummary] {
+        let response: ProfilesResponse = try await request(
+            path: "/api/profiles",
+            method: "GET",
+            contentType: "application/json",
+            body: nil,
+            includeSession: false
+        )
+        return response.profiles
+    }
+
+    func profileDetail(
+        profileRef: String
+    ) async throws -> UserProfileDetail {
+        let response: ProfileDetailResponse = try await request(
+            path: "/api/profiles/\(profileRef)",
+            method: "GET",
+            contentType: "application/json",
+            body: nil,
+            includeSession: false
+        )
+        return response.profile
+    }
+
+    func createProfile(
+        _ input: NewUserProfileInput
+    ) async throws -> UserProfileSummary {
+        let body = try JSONEncoder().encode(input)
+        let response: ProfileSummaryResponse = try await request(
+            path: "/api/profiles/questionnaire",
+            method: "POST",
+            contentType: "application/json",
+            body: body,
+            includeSession: false
+        )
+        return response.profile
+    }
+
+    func importProfileMarkdown(
+        _ markdown: Data
+    ) async throws -> UserProfileSummary {
+        let response: ProfileSummaryResponse = try await request(
+            path: "/api/profiles",
+            method: "POST",
+            contentType: "text/markdown",
+            body: markdown,
+            includeSession: false
+        )
+        return response.profile
     }
 
     func uploadExpression(wav: Data, primaryTranscript: String) async throws {

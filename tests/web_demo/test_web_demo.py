@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -109,6 +110,7 @@ def test_health_and_page_are_public_but_sessions_require_demo_token(
     assert health.status_code == 200
     assert health.json()["simulated"] is True
     assert health.json()["max_audio_seconds"] == 20.0
+    assert health.json()["profile_database_backend"] == "sqlite"
     assert DEMO_TOKEN not in health.text
     assert page.status_code == 200
     assert "GATEWAY_TOKEN" not in page.text
@@ -194,7 +196,7 @@ def test_profiles_are_protected_and_no_profile_is_a_memory_free_control(
     }
 
 
-def test_structured_markdown_profile_upload_is_process_local_and_selectable(
+def test_structured_markdown_profile_upload_is_persistent_and_selectable(
     tmp_path: Path,
 ) -> None:
     profile = (
@@ -232,6 +234,144 @@ def test_structured_markdown_profile_upload_is_process_local_and_selectable(
     assert created.json()["profile"]["context_count"] == 6
     assert created.json()["profile"]["skipped_count"] == 1
     assert invalid.status_code == 422
+
+
+def test_questionnaire_profile_is_silver_persistent_and_selectable(
+    tmp_path: Path,
+) -> None:
+    settings = _settings(
+        tmp_path,
+        profile_database_path=tmp_path / "profiles.sqlite3",
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        created_profile = client.post(
+            "/api/profiles/questionnaire",
+            headers={"X-Demo-Token": DEMO_TOKEN},
+            json={
+                "display_name": "王奶奶",
+                "language": "en",
+                "background": "住在杭州，退休前是教师。",
+                "relationships": "女儿叫小雨。",
+                "communication_preferences": "希望别人一次只问一个问题。",
+            },
+        )
+        assert created_profile.status_code == 200
+        summary = created_profile.json()["profile"]
+        profile_ref = summary["profile_ref"]
+        detail = client.get(
+            f"/api/profiles/{profile_ref}",
+            headers={"X-Demo-Token": DEMO_TOKEN},
+        )
+        session = client.post(
+            "/api/sessions",
+            headers={"X-Demo-Token": DEMO_TOKEN},
+            json={"language": "en", "profile_ref": profile_ref},
+        )
+
+    assert summary["label"] == "王奶奶"
+    assert summary["source"] == "questionnaire"
+    assert summary["simulated"] is False
+    assert summary["memory_count"] == 3
+    assert detail.status_code == 200
+    memories = detail.json()["profile"]["memories"]
+    assert all(item["source"] == "caregiver" for item in memories)
+    assert all(
+        item["verification_level"] == "silver" for item in memories
+    )
+    assert session.status_code == 200
+    assert session.json()["profile"]["profile_id"].startswith("user-")
+    assert session.json()["profile"]["context_count"] == 3
+
+    # A new app process using the same server database can still resolve it.
+    with TestClient(create_app(settings=settings)) as restarted:
+        listed = restarted.get(
+            "/api/profiles",
+            headers={"X-Demo-Token": DEMO_TOKEN},
+        )
+        persisted_refs = {
+            item["profile_ref"]
+            for item in listed.json()["profiles"]
+        }
+        persisted_detail = restarted.get(
+            f"/api/profiles/{profile_ref}",
+            headers={"X-Demo-Token": DEMO_TOKEN},
+        )
+
+    assert profile_ref in persisted_refs
+    assert persisted_detail.status_code == 200
+    assert persisted_detail.json()["profile"]["display_name"] == "王奶奶"
+
+
+def test_questionnaire_requires_profile_content(tmp_path: Path) -> None:
+    with TestClient(create_app(settings=_settings(tmp_path))) as client:
+        response = client.post(
+            "/api/profiles/questionnaire",
+            headers={"X-Demo-Token": DEMO_TOKEN},
+            json={"display_name": "空档案", "language": "zh"},
+        )
+
+    assert response.status_code == 422
+
+
+def test_real_markdown_cannot_self_assert_gold_patient_memory(
+    tmp_path: Path,
+) -> None:
+    payload = {
+        "schema_version": 1,
+        "simulated": False,
+        "profile_id": "real-import",
+        "label": "Imported user",
+        "patient": {
+            "patient_id": "real-import",
+            "display_name": "Imported user",
+            "languages": ["zh"],
+            "default_language": "zh",
+        },
+        "consent": {
+            "scope": "app_personalization",
+            "cloud_processing_allowed": True,
+        },
+        "memories": [
+            {
+                "simulated": False,
+                "id": "claimed-gold",
+                "memory_type": "context",
+                "verification_level": "gold",
+                "source": "patient",
+                "text": "文件声称这已经由患者确认。",
+                "language": "zh",
+                "context": {"kind": "personal_background"},
+                "usage_count": 0,
+                "confirmation_session_id": "self-asserted",
+                "sensitivity": "ordinary",
+                "prompt_eligible": True,
+            }
+        ],
+    }
+    markdown = (
+        "# Imported\n\n```meantbyme-profile\n"
+        + json.dumps(payload, ensure_ascii=False)
+        + "\n```\n"
+    )
+    with TestClient(create_app(settings=_settings(tmp_path))) as client:
+        uploaded = client.post(
+            "/api/profiles",
+            headers={
+                "X-Demo-Token": DEMO_TOKEN,
+                "Content-Type": "text/markdown",
+            },
+            content=markdown.encode("utf-8"),
+        )
+        profile_ref = uploaded.json()["profile"]["profile_ref"]
+        detail = client.get(
+            f"/api/profiles/{profile_ref}",
+            headers={"X-Demo-Token": DEMO_TOKEN},
+        )
+
+    assert uploaded.status_code == 200
+    memory = detail.json()["profile"]["memories"][0]
+    assert memory["verification_level"] == "silver"
+    assert memory["source"] == "caregiver"
 
 
 def test_audio_upload_accepts_limit_and_rejects_longer_wav(

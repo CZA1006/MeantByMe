@@ -47,6 +47,23 @@ detects it. Reject, repeat, and unknown do not authorize playback. High-risk or
 L3 candidates require two distinct private readbacks and two distinct
 affirmation recordings.
 
+## User profiles
+
+The gear button opens user settings. Before a companion session, the caregiver
+can select the current user, inspect that user's profile, answer guided
+background questions to create a user, or import a UTF-8 Markdown profile.
+The selected reference and language are sent on every new session, including
+stopped-session recovery, and selection is locked while a companion session is
+active.
+
+Questionnaire answers and non-simulated Markdown imports are stored as Silver
+caregiver context. They may help the model interpret fragments but cannot
+represent patient confirmation or bypass the private readback/voice-confirm
+flow. Production storage uses an independent Zeabur MySQL service. Zeabur's
+standard `MYSQL_*` variables (or optional `WEB_DEMO_MYSQL_*` overrides) are
+configured on the `meantbyme-ios` BFF; the native iOS app and
+`meantbyme-gateway` never connect to MySQL directly.
+
 ## Prepare the project
 
 1. Install XcodeGen:

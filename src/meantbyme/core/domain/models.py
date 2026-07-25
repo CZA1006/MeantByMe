@@ -247,7 +247,7 @@ class ExpressionSession(DomainModel):
     stage: SessionStage = SessionStage.READY
     language: str | None = None
     situation: str | None = None
-    voice_profile_id: str
+    voice_profile_id: str | None
     evidence: TranscriptEvidence | None = None
     retrieved_memories: list[MemoryItem] = Field(default_factory=list)
     candidates: list[ExpressionCandidate] = Field(default_factory=list)

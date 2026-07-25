@@ -41,6 +41,10 @@ from meantbyme.core.ports import ASRPort, CommandIntentPort, TTSPort
 from meantbyme.core.runtime import CommandRejected, MeantByMeRuntime
 
 from services.web_demo.config import WebDemoSettings
+from services.web_demo.profile_storage import (
+    MySQLProfileStore,
+    SQLiteProfileStore,
+)
 from services.web_demo.profiles import DemoProfileRegistry
 
 
@@ -340,8 +344,12 @@ class DemoSession:
         if spoken and session.voice_authorized:
             view_payload["personal_voice_status"] = "used"
         return {
-            "notice": SIMULATED_NOTICE,
-            "simulated": True,
+            "notice": (
+                SIMULATED_NOTICE
+                if self.profile.simulated
+                else "User profile data; not a clinical accuracy claim."
+            ),
+            "simulated": self.profile.simulated,
             "mode": self.mode,
             "profile": {
                 "profile_id": self.profile.profile_id,
@@ -392,11 +400,30 @@ class DemoSessionStore:
         self._sessions: dict[str, DemoSession] = {}
         self._lock = threading.RLock()
         root = Path(__file__).resolve().parents[2]
+        if settings.profile_database_backend == "mysql":
+            profile_store = MySQLProfileStore(
+                host=settings.mysql_host,
+                port=settings.mysql_port,
+                user=settings.mysql_user,
+                password=settings.mysql_password,
+                database=settings.mysql_database,
+                connect_timeout_seconds=(
+                    settings.mysql_connect_timeout_seconds
+                ),
+                ssl_ca=settings.mysql_ssl_ca,
+                auto_create_schema=settings.mysql_auto_create_schema,
+            )
+        else:
+            profile_store = SQLiteProfileStore(
+                settings.profile_database_path
+                or settings.audio_store_root / "profiles.sqlite3"
+            )
         self._profiles = DemoProfileRegistry(
             root / "demo/profiles",
             max_profile_bytes=settings.max_profile_bytes,
             max_uploaded_profiles=settings.max_uploaded_profiles,
             cloud_mode=settings.mode == "cloud",
+            store=profile_store,
         )
 
     def list_profiles(self) -> list[dict[str, Any]]:
@@ -404,6 +431,22 @@ class DemoSessionStore:
 
     def register_profile(self, markdown: str) -> dict[str, Any]:
         return self._profiles.register_upload(markdown)
+
+    def create_profile(
+        self,
+        *,
+        display_name: str,
+        language: str,
+        answers: dict[str, str],
+    ) -> dict[str, Any]:
+        return self._profiles.create_from_questionnaire(
+            display_name=display_name,
+            language=language,
+            answers=answers,
+        )
+
+    def profile_detail(self, profile_ref: str) -> dict[str, Any]:
+        return self._profiles.detail(profile_ref)
 
     def create(
         self,
@@ -444,6 +487,7 @@ class DemoSessionStore:
             self._sessions.clear()
         for session in sessions:
             session.close()
+        self._profiles.close()
 
 
 def _build_session(
@@ -466,8 +510,18 @@ def _build_session(
         if not settings.gateway_token:
             repository.close()
             raise RuntimeError("Cloud demo requires GATEWAY_TOKEN")
-        voice_profile_id = settings.voice_profile_id
-        if voice_profile_id != profile.voice_consent.voice_profile_id:
+        profile_voice_id = (
+            profile.voice_consent.voice_profile_id
+            if profile.voice_consent is not None
+            else None
+        )
+        voice_profile_id = (
+            settings.voice_profile_id if profile_voice_id else None
+        )
+        if (
+            voice_profile_id is not None
+            and voice_profile_id != profile_voice_id
+        ):
             repository.grant_voice_consent(
                 patient.patient_id,
                 f"web-voice-consent-{voice_profile_id}",
@@ -497,7 +551,11 @@ def _build_session(
         )
         command_intent: CommandIntentPort = GatewayCommandIntentAdapter(client)
     else:
-        voice_profile_id = profile.voice_consent.voice_profile_id
+        voice_profile_id = (
+            profile.voice_consent.voice_profile_id
+            if profile.voice_consent is not None
+            else None
+        )
         base_asr = MockASRAdapter.from_json(fixture_path)
         intent = MockIntentAdapter()
         command_intent = MockCommandIntentAdapter()

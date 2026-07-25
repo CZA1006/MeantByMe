@@ -68,15 +68,17 @@ by this flow.
 
 ## Deployment
 
-Deploy the updated Gateway and Web Demo containers as before. The iOS app
-points at the Web Demo HTTPS domain, not directly at the provider Gateway, so
-`GATEWAY_TOKEN` and provider secrets remain server-side.
+Deploy the updated Gateway and iOS BFF containers as before. The native iOS app
+points at the `meantbyme-ios` BFF HTTPS domain, not directly at the provider
+Gateway, so `GATEWAY_TOKEN`, MySQL credentials, and provider secrets remain
+server-side. User profiles are stored by a third, independent MySQL service;
+configure its connection variables only on `meantbyme-ios`.
 
 For the current repository layout:
 
 ```bash
 docker build -f Dockerfile -t meantbyme-gateway .
-docker build -f Dockerfile.meantbyme-demo -t meantbyme-demo .
+docker build -f Dockerfile.meantbyme-demo -t meantbyme-ios .
 ```
 
 Expose the Gateway container only to the Web Demo/BFF where practical. Expose

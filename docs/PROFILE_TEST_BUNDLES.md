@@ -60,12 +60,27 @@ After entering the demo access code, choose:
 
 After a completed expression, **Run same audio with another profile** repeats
 the exact uploaded/recorded WAV after another profile is selected. Uploads
-remain in memory for the current Web Demo process and are never written to
-disk.
+are stored in the server profile database.
 
 Evaluator-only case manifests may refer to external WAV filenames because raw
 audio is gitignored. See `demo/eval/lin_yue_profile_cases.jsonl`; its
 acceptable answer is never loaded by the Web Demo or profile importer.
 
-Only simulated, de-identified bundles are accepted by this demo. Cloud mode
-rejects bundles whose `cloud_processing_allowed` value is false.
+The browser evaluation flow should use only simulated, de-identified bundles.
+Cloud mode rejects every bundle whose `cloud_processing_allowed` value is
+false.
+
+## iOS user profiles
+
+The iOS app can also create a non-simulated profile through guided questions.
+Those answers are caregiver-entered evidence, so every generated memory is
+stored as Silver caregiver context. A non-simulated Markdown import is likewise
+demoted to Silver on the server; a file cannot grant itself Gold provenance by
+claiming a confirmation ID. Simulated test bundles retain their declared
+provenance for controlled evaluation.
+
+Production profile data uses MySQL when
+`WEB_DEMO_PROFILE_DB_BACKEND=mysql`. Configure the `WEB_DEMO_MYSQL_*`
+environment variables in Zeabur Secrets and initialize the schema with
+`deploy/mysql/init_profiles.sql`. SQLite remains available only for local/mock
+testing.
