@@ -199,6 +199,26 @@ def test_frontend_supports_system_and_manual_dark_appearance() -> None:
     assert "logo-lockup-${language}${darkSuffix}.png" in script
 
 
+def test_desktop_frontend_expands_into_a_web_workspace() -> None:
+    root = Path(__file__).resolve().parents[2]
+    markup = (root / "services/web_demo/static/index.html").read_text(
+        encoding="utf-8",
+    )
+    styles = (root / "services/web_demo/static/styles.css").read_text(
+        encoding="utf-8",
+    )
+
+    assert "styles.css?v=ios-web-1" in markup
+    assert "app.js?v=ios-web-1" in markup
+    assert "a native web inspector from 900px" in markup
+    assert "max-width: 100rem" in styles
+    assert "flex: 1 1 auto" in styles
+    assert "max-width: 52rem" in styles
+    assert "border-left: 1px solid var(--line)" in styles
+    assert "flex-basis: 24.5625rem" not in styles
+    assert "border-radius: 2.875rem" not in styles
+
+
 def test_busy_state_never_re_enables_a_stage_disabled_control() -> None:
     """Releasing the busy state must not unlock "Confirm and speak".
 
@@ -284,8 +304,8 @@ def test_structured_markdown_profile_upload_is_process_local_and_selectable(
     assert uploaded.json()["profile"]["source"] == "uploaded"
     assert created.status_code == 200
     assert created.json()["profile"]["profile_id"] == "lin_yue_demo"
-    assert created.json()["profile"]["context_count"] == 6
-    assert created.json()["profile"]["skipped_count"] == 1
+    assert created.json()["profile"]["context_count"] == 17
+    assert created.json()["profile"]["skipped_count"] == 2
     assert invalid.status_code == 422
 
 

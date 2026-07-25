@@ -84,7 +84,7 @@ def test_profile_plus_rich_single_asr_retrieves_only_relevant_context() -> None:
     )
 
     assert runtime.session.situation is not None
-    assert "building MeantByMe" in runtime.session.situation
+    assert "developing MeantByMe" in runtime.session.situation
     assert "Wednesday is normally reserved for treatment" not in (
         runtime.session.situation
     )

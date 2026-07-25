@@ -1,8 +1,9 @@
 /* ==========================================================================
-   MeantByMe — mobile-first patient UI
+   MeantByMe — responsive consent-first patient UI
 
-   Target is a phone held in one hand, not a desktop browser. Consequences that
-   drive most of this file:
+   The patient flow is mobile-first, while the same visual language expands
+   into a real web workspace on larger screens. Consequences that drive this
+   file:
      - The frame is a flex column with one scrolling region, so the action bar
        is always on screen without position:fixed (no iOS URL-bar jank).
      - Type is in rem so OS/browser text scaling actually works.
@@ -2312,68 +2313,7 @@ p {
   }
 }
 
-/* ── Tablet / desktop: present the phone frame, dock the trace beside it ──── */
-
-@media (min-width: 56.25rem) {
-  body {
-    display: grid;
-    padding: 1.5rem;
-    place-items: center;
-  }
-
-  .app-layout {
-    align-items: stretch;
-    flex-direction: row;
-    gap: 1.5rem;
-    height: min(58rem, calc(100dvh - 3rem));
-    min-height: 0;
-  }
-
-  .app-frame {
-    border: 1px solid rgba(28, 43, 45, 0.08);
-    border-radius: 2.25rem;
-    box-shadow: var(--shadow-lg);
-    flex: 0 0 26rem;
-    width: 26rem;
-  }
-
-  /* Non-modal from here up: opened with show() so a presenter can drive the
-     flow and watch events land at the same time. */
-  .sheet {
-    border-radius: var(--r-xl);
-    flex: 0 0 23rem;
-    height: 100%;
-    inset: auto;
-    max-height: none;
-    padding: 1.25rem;
-    position: static;
-    width: 23rem;
-  }
-
-  .sheet[open] {
-    animation: none;
-  }
-
-  .sheet-grip {
-    display: none;
-  }
-
-  .app-frame .patient-workspace {
-    padding: 1.25rem 1.5rem 1.75rem;
-  }
-
-  .action-bar,
-  .app-header {
-    padding-left: 1.5rem;
-    padding-right: 1.5rem;
-  }
-
-  .status-strip,
-  .simulation-notice {
-    padding-left: 1.5rem;
-    padding-right: 1.5rem;
-  }
-}
+/* ── Tablet / desktop becomes a true web workspace ────────────────────────── */
 
 /* Below the docked breakpoint the sheet is modal, so hide the close affordance
    duplication only when it is docked. */
@@ -2968,16 +2908,224 @@ h2,
 }
 
 @media (min-width: 56.25rem) {
+  body {
+    background: var(--canvas);
+    display: block;
+    padding: 0;
+  }
+
   .app-layout {
-    height: min(53.25rem, calc(100dvh - 3rem));
+    align-items: stretch;
+    background: var(--surface);
+    border-left: 1px solid var(--line);
+    border-right: 1px solid var(--line);
+    flex-direction: row;
+    gap: 0;
+    height: 100vh;
+    height: 100dvh;
+    margin: 0 auto;
+    max-width: 100rem;
+    min-height: 0;
+    width: 100%;
   }
 
   .app-frame {
-    border-color: var(--frame-border);
-    border-radius: 2.875rem;
-    box-shadow: var(--frame-shadow);
-    flex-basis: 24.5625rem;
-    width: 24.5625rem;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0;
+    width: auto;
+  }
+
+  .app-header {
+    min-height: 4.25rem;
+    padding: 0 clamp(1.5rem, 4vw, 3.5rem);
+  }
+
+  .brand-block {
+    gap: 0.75rem;
+    min-height: 4.25rem;
+    padding-left: 0;
+  }
+
+  .brand-mark {
+    height: 2.125rem;
+    width: 2.125rem;
+  }
+
+  .brand-copy strong {
+    font-size: var(--text-lg);
+  }
+
+  .brand-copy span {
+    display: block;
+    font-size: var(--text-xs);
+    max-width: 20rem;
+  }
+
+  :root:lang(zh) .brand-copy span {
+    font-size: var(--text-sm);
+  }
+
+  .header-actions {
+    gap: 0.25rem;
+  }
+
+  .status-strip {
+    gap: 0.75rem;
+    min-height: 3rem;
+    padding: 0.375rem clamp(1.5rem, 4vw, 3.5rem);
+  }
+
+  .profile-chip {
+    flex: 0 1 auto;
+    max-width: 24rem;
+    padding-right: 0.75rem;
+  }
+
+  .voice-status {
+    margin-left: auto;
+  }
+
+  .simulation-notice {
+    padding: 0.375rem clamp(1.5rem, 4vw, 3.5rem);
+  }
+
+  .patient-workspace {
+    padding: clamp(2rem, 5vh, 3.5rem) clamp(2rem, 6vw, 5rem) 3rem;
+  }
+
+  .patient-workspace > .progress-row,
+  .patient-workspace > .decision-surface {
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 52rem;
+    width: 100%;
+  }
+
+  .progress-row {
+    font-size: var(--text-sm);
+    margin-bottom: 2.25rem;
+  }
+
+  h1 {
+    font-size: clamp(2rem, 3.2vw, 2.625rem);
+    max-width: 42rem;
+  }
+
+  .lead {
+    font-size: 1.0625rem;
+    max-width: 42rem;
+  }
+
+  .action-grid {
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  }
+
+  .capture-panel,
+  .evidence-band,
+  .audio-review,
+  .receipt-table,
+  .confirmation-list,
+  .candidate-list,
+  .final-expression,
+  .final-details {
+    border: 1px solid var(--line);
+  }
+
+  .action-bar {
+    padding: 0.875rem clamp(2rem, 6vw, 5rem) 1rem;
+  }
+
+  .action-bar > * {
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 52rem;
+    width: 100%;
+  }
+
+  .primary-actions .button:only-child {
+    justify-self: end;
+    max-width: 22rem;
+    width: 100%;
+  }
+
+  /* The trace is a web inspector, not a phone-sized card beside a mock device.
+     Closing it removes the column entirely because a closed dialog is
+     display:none. */
+  .sheet {
+    border: 0;
+    border-left: 1px solid var(--line);
+    border-radius: 0;
+    box-shadow: none;
+    flex: 0 0 clamp(19rem, 25vw, 23rem);
+    height: 100%;
+    inset: auto;
+    max-height: none;
+    padding: 1.75rem 1.5rem;
+    position: static;
+    width: clamp(19rem, 25vw, 23rem);
+  }
+
+  .sheet[open] {
+    animation: none;
+  }
+
+  .sheet-grip {
+    display: none;
+  }
+
+  .sheet-head {
+    margin-bottom: 1.5rem;
+  }
+
+  .trace-list {
+    padding-right: 0.25rem;
+  }
+
+  .access-dialog {
+    max-width: 34rem;
+  }
+}
+
+@media (min-width: 75rem) {
+  .action-bar {
+    align-items: center;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem);
+    padding-left: max(3rem, calc((100% - 52rem) / 2));
+    padding-right: max(3rem, calc((100% - 52rem) / 2));
+  }
+
+  .action-bar > * {
+    margin: 0;
+    max-width: none;
+  }
+
+  .status-message {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .confirm-gate {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .bar-row {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  .primary-actions {
+    grid-column: 2;
+    grid-row: 3;
+  }
+
+  .primary-actions .button:only-child {
+    max-width: none;
   }
 }
 

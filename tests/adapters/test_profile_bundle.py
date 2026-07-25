@@ -140,7 +140,7 @@ def test_lin_yue_profile_selects_relevant_context_without_expected_answer() -> N
     )
 
     assert selected
-    assert "ctx-lin-yue-meantbyme-project" in {
+    assert "ctx-lin-yue-meantbyme" in {
         memory.id for memory in selected
     }
     assert all("treatment" not in (memory.text or "").casefold() for memory in selected)

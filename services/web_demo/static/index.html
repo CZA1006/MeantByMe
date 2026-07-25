@@ -24,7 +24,7 @@
         // System appearance remains the safe default.
       }
     </script>
-    <link rel="stylesheet" href="/assets/styles.css?v=ios-3">
+    <link rel="stylesheet" href="/assets/styles.css?v=ios-web-1">
   </head>
   <body>
     <div id="launch-screen" class="launch-screen" aria-hidden="true">
@@ -39,9 +39,10 @@
     <a class="skip-link" href="#decision" data-i18n="skipLink">Skip to current decision</a>
 
     <div class="app-layout">
-      <!-- The frame is a flex column: header block, one scrolling stage region,
-           and the action bar as the last flex item. The bar is therefore always
-           on screen without position:fixed, which avoids iOS URL-bar jank. -->
+      <!-- The patient surface is a flex column: header block, one scrolling
+           stage region, and the action bar as the last flex item. On phones it
+           fills the viewport; on the web it becomes the main workspace beside
+           the verifiable-event inspector. -->
       <div class="app-frame">
         <header class="app-header">
           <div class="brand-block">
@@ -145,8 +146,8 @@
         </div>
       </div>
 
-      <!-- Modal bottom sheet on phones; docked as a side column from 900px so a
-           presenter can watch events land while driving the flow. -->
+      <!-- Modal bottom sheet on phones; a native web inspector from 900px so
+           the patient task and verifiable events can be reviewed together. -->
       <dialog id="trace-dialog" class="sheet" aria-labelledby="trace-heading">
         <div class="sheet-grip" aria-hidden="true"></div>
         <div class="sheet-head">
@@ -231,6 +232,6 @@
       </li>
     </template>
 
-    <script src="/assets/app.js?v=ios-3" defer></script>
+    <script src="/assets/app.js?v=ios-web-1" defer></script>
   </body>
 </html>
