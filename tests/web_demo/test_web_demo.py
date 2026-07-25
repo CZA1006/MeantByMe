@@ -114,6 +114,7 @@ def test_health_and_page_are_public_but_sessions_require_demo_token(
     assert health.json()["max_audio_seconds"] == 20.0
     assert DEMO_TOKEN not in health.text
     assert page.status_code == 200
+    assert page.headers["cache-control"] == "no-store, max-age=0"
     assert "GATEWAY_TOKEN" not in page.text
     assert missing.status_code == 401
     assert wrong.status_code == 401
