@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#14231d">
+  <title>MeantByMe｜演示视频</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: #f8f5ee;
+      background: #101713;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    main { width: min(100% - 28px, 960px); margin: 0 auto; padding: 22px 0 44px; }
+    a { color: inherit; text-decoration: none; }
+    .back { display: inline-block; margin-bottom: 24px; color: #d7ddd9; font-size: 14px; }
+    h1 { margin: 0 0 8px; font-size: clamp(30px, 7vw, 48px); letter-spacing: -.04em; }
+    p { margin: 0 0 22px; color: #aebbb5; line-height: 1.65; }
+    .player { overflow: hidden; background: black; border: 1px solid #304139; border-radius: 18px; box-shadow: 0 24px 60px rgba(0, 0, 0, .35); }
+    video { display: block; width: 100%; max-height: 75vh; background: black; }
+    .download { display: inline-block; margin-top: 18px; padding: 11px 15px; border-radius: 12px; background: #da6b42; font-weight: 750; }
+  </style>
+</head>
+<body>
+  <main>
+    <a class="back" href="./">‹ 返回项目资料</a>
+    <h1>MeantByMe 演示</h1>
+    <p>观看 consent-first 沟通代理如何从残缺表达走向患者明确授权的语音输出。</p>
+    <div class="player">
+      <video controls playsinline preload="metadata">
+        <source src="./assets/meantbyme-demo.mp4" type="video/mp4">
+        你的浏览器暂不支持在线播放，请使用下方按钮下载视频。
+      </video>
+    </div>
+    <a class="download" href="./assets/meantbyme-demo.mp4" download>下载演示视频</a>
+  </main>
+</body>
+</html>

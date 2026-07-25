@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#14231d">
+  <title>MeantByMe｜项目资料</title>
+  <meta name="description" content="MeantByMe 项目演示、GitHub、研究论文、商业计划书与产品定义。">
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #14231d;
+      --muted: #5f6e68;
+      --paper: #f7f3ea;
+      --card: rgba(255, 255, 255, 0.88);
+      --accent: #da6b42;
+      --green: #1d5b46;
+      --line: rgba(20, 35, 29, 0.12);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 15% 5%, rgba(218, 107, 66, 0.18), transparent 32rem),
+        radial-gradient(circle at 90% 90%, rgba(29, 91, 70, 0.14), transparent 28rem),
+        var(--paper);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    main {
+      width: min(100% - 32px, 560px);
+      margin: 0 auto;
+      padding: 54px 0 40px;
+    }
+
+    .eyebrow {
+      margin: 0 0 12px;
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(38px, 10vw, 56px);
+      line-height: 0.96;
+      letter-spacing: -0.055em;
+    }
+
+    .tagline {
+      margin: 18px 0 8px;
+      font-size: 19px;
+      font-weight: 700;
+    }
+
+    .intro {
+      margin: 0 0 30px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.7;
+    }
+
+    .links {
+      display: grid;
+      gap: 12px;
+    }
+
+    .link {
+      display: grid;
+      grid-template-columns: 44px 1fr auto;
+      align-items: center;
+      min-height: 76px;
+      padding: 14px 16px;
+      color: inherit;
+      text-decoration: none;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 10px 35px rgba(20, 35, 29, 0.06);
+      transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+    }
+
+    .link:active { transform: scale(0.985); }
+    .link:hover {
+      transform: translateY(-2px);
+      border-color: rgba(218, 107, 66, 0.5);
+      box-shadow: 0 14px 38px rgba(20, 35, 29, 0.1);
+    }
+
+    .icon {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      background: rgba(29, 91, 70, 0.09);
+      font-size: 20px;
+    }
+
+    .label { font-size: 17px; font-weight: 800; }
+    .detail { margin-top: 3px; color: var(--muted); font-size: 12px; }
+    .arrow { color: var(--accent); font-size: 22px; font-weight: 700; }
+
+    .principle {
+      margin: 28px 0 0;
+      padding: 18px 20px;
+      border-left: 4px solid var(--accent);
+      border-radius: 4px 14px 14px 4px;
+      background: rgba(255, 255, 255, 0.52);
+      font-size: 15px;
+      line-height: 1.65;
+    }
+
+    footer {
+      margin-top: 26px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">Consent-first communication agent</p>
+    <h1>MeantByMe<br>意由我</h1>
+    <p class="tagline">Completed with AI. Meant by me.</p>
+    <p class="intro">AI 可以帮助补全表达，但意思必须由本人确认。选择下方入口了解我们的演示、技术、研究与产品。</p>
+
+    <nav class="links" aria-label="项目资料">
+      <a class="link" href="./demo.html">
+        <span class="icon" aria-hidden="true">▶</span>
+        <span><span class="label">演示视频</span><span class="detail">在线播放完整产品演示</span></span>
+        <span class="arrow" aria-hidden="true">›</span>
+      </a>
+
+      <a class="link" href="https://github.com/CZA1006/MeantByMe">
+        <span class="icon" aria-hidden="true">⌘</span>
+        <span><span class="label">GitHub</span><span class="detail">代码、架构与开发文档</span></span>
+        <span class="arrow" aria-hidden="true">›</span>
+      </a>
+
+      <a class="link" href="https://github.com/CZA1006/MeantByMe/blob/main/docs/12_RESEARCH_REFERENCES.md">
+        <span class="icon" aria-hidden="true">⌕</span>
+        <span><span class="label">相关论文</span><span class="detail">研究依据与参考资料</span></span>
+        <span class="arrow" aria-hidden="true">›</span>
+      </a>
+
+      <a class="link" href="./business-plan.html">
+        <span class="icon" aria-hidden="true">▥</span>
+        <span><span class="label">商业计划书</span><span class="detail">手机阅读或下载 DOCX</span></span>
+        <span class="arrow" aria-hidden="true">›</span>
+      </a>
+
+      <a class="link" href="https://github.com/CZA1006/MeantByMe/blob/main/docs/01_PRODUCT_VISION.md">
+        <span class="icon" aria-hidden="true">◎</span>
+        <span><span class="label">产品定义</span><span class="detail">愿景、边界与核心原则</span></span>
+        <span class="arrow" aria-hidden="true">›</span>
+      </a>
+    </nav>
+
+    <p class="principle">代理可以补全句子，但永远不能替患者决定意思。</p>
+    <footer>MeantByMe · Consent first, always.</footer>
+  </main>
+</body>
+</html>
