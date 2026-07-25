@@ -1,127 +1,126 @@
-# 14｜Repository Structure
+# 14｜Repository structure
 
-> **注:** SQLite 建表语句与安全约束(Gold CHECK、`patient_id` 外键、幂等主键、`authorizations` 拆表)见 [DECISIONS.md](../DECISIONS.md) D4。
+The repository has a canonical baseline on `main` and additional branch-only
+components. This document distinguishes actual layout from integration targets.
+
+## Canonical `main`
 
 ```text
 MeantByMe/
-├── README.md
+├── .github/
+│   └── pull_request_template.md
 ├── AGENTS.md
-├── pyproject.toml
-├── .env.example
-├── .gitignore
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+├── DECISIONS.md
+├── LICENSE
+├── README.md
+├── SECURITY.md
 ├── docs/
+│   ├── README.md
+│   ├── STATUS.md
+│   ├── BRANCH_AUDIT.md
+│   ├── 01_...14_*.md
+│   ├── index.html
+│   ├── demo.html
+│   └── assets/
+├── demo/
+│   ├── audio/
+│   ├── fixtures/
+│   └── profiles/
 ├── src/meantbyme/
 │   ├── core/
 │   │   ├── domain/
-│   │   ├── runtime/
-│   │   ├── policies/
 │   │   ├── personalization/
-│   │   └── ports/
+│   │   ├── policies/
+│   │   ├── ports/
+│   │   └── runtime/
 │   ├── adapters/
-│   │   ├── asr/
-│   │   ├── intent/
-│   │   ├── tts/
-│   │   ├── embedding/
-│   │   └── storage/
-│   ├── app/
-│   │   └── pyside/
-│   ├── gateway_client/
-│   └── config/
-├── services/
-│   ├── gateway/
-│   └── remote_asr/
+│   ├── config/
+│   └── cli.py
 ├── tests/
-│   ├── unit/
-│   ├── integration/
-│   ├── safety/
-│   └── fixtures/
-├── demo/
-│   ├── profiles/
-│   ├── audio/
-│   ├── fixtures/
-│   └── scripts/
-├── scripts/
-└── artifacts/
+├── artifacts/
+└── pyproject.toml
 ```
 
-## Core rule
+`docs/index.html` is the GitHub Pages resource hub. It links the repository,
+demo, business plan, release materials, and project documents; it is not the
+consent runtime.
 
-`core/` 与平台和供应商无关。
+## Branch-only components
 
-禁止：
+`develop` / `frontend` add:
 
 ```text
-PySide6
-mlx
-sounddevice
-FastAPI
-provider SDKs
+services/
+├── gateway/
+└── web_demo/
+
+src/meantbyme/eval/
+tests/gateway/
+tests/web_demo/
 ```
 
-## Adapter rule
-
-所有外部数据转换成共享 schema。
+`feature/earPhones` additionally adds:
 
 ```text
-viaim payload
-→ ViaimASRAdapter
-→ ASRResult
+ios/MeantByMeHeadset/
+├── Config/
+├── Sources/
+├── project.yml
+└── README.md
+
+src/meantbyme/
+├── adapters/command/
+├── adapters/qa/
+└── core/qa/
 ```
 
-## UI rule
+It also changes profile storage and dynamic memory. These are experimental and
+must not be inferred as canonical from their path.
 
-UI 发送 command、接收 view model。
+## Dependency boundary
 
-UI 不：
+Allowed:
 
-- 直接调用个人 TTS；
--写 Verified Memory；
--决定状态转换；
--隐藏风险；
--自动选择候选。
-
-## Demo fixtures
-
-必须有确定性 fixture：
-
-- golden path；
--high uncertainty；
--None of these；
--blocked TTS；
--memory reranking；
--provider timeout。
-
-禁止提交真实患者数据。
-
-## Suggested config
-
-```yaml
-runtime:
-  mode: mock
-
-providers:
-  primary_asr: mock
-  secondary_asr: mock
-  intent: mock
-  tts: cached
-
-features:
-  memory_trace: true
-  personalized_ranking: true
-  head_gesture: false
-  earbud_touch: false
+```text
+UI → Core Runtime → Provider Protocols → Adapters
+Backend → Core Schemas
+Tests → Core Runtime and Adapters
 ```
 
-## Initial implementation order
+Forbidden:
 
-1. domain models；
-2. state machine；
-3. mock providers；
-4. command handler；
-5. SQLite；
-6. PySide6 mock flow；
-7. authorization tests；
-8. real ASR；
-9. real LLM；
-10. real TTS；
-11. packaging。
+```text
+Core Runtime → PySide6 / SwiftUI / FastAPI
+Core Runtime → MLX / Viaim / StepFun SDK
+Frontend → direct personal TTS
+LLM Adapter → authorization or Gold-memory mutation
+```
+
+## Data and fixtures
+
+Only simulated or appropriately licensed fixtures belong in the repository.
+Do not commit real patient data, raw patient audio, production personal memory,
+voice profiles, secrets, vendor SDKs, or database dumps.
+
+Each external provider needs a deterministic mock. Required fixture paths cover
+golden flow, uncertainty, rejection, `None of these`, provider failure, memory
+reranking, high risk, and cross-patient isolation.
+
+## Integration target
+
+After staged integration, component boundaries should remain visible:
+
+```text
+clients/ or ios/    presentation and device adapters
+services/           gateway and server-side BFF
+src/meantbyme/core  deterministic domain/runtime/policies/ports
+src/meantbyme/adapters
+                    provider and storage implementations
+tests/              unit, safety, integration, service and device contracts
+docs/               canonical design, status and audit trail
+```
+
+Do not reorganize paths only for aesthetics; move code when the dependency
+boundary and ownership become clearer and tests protect the migration.

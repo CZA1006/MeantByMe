@@ -1,5 +1,10 @@
 # 03｜总体技术架构
 
+> **Implementation status (2026-07-26):** `main` contains the deterministic
+> mock core. Gateway and responsive Web BFF exist on `develop`/`frontend`.
+> Swift/iOS headset code exists only on experimental `feature/earPhones`.
+> See [STATUS.md](STATUS.md); paths below may describe the integration target.
+
 ## 架构原则
 
 采用：
@@ -12,8 +17,8 @@
 
 ```text
 ┌───────────────────────────────────────────────┐
-│ MeantByMe macOS App — PySide6                 │
-│ Patient interaction / audio / trace / profile │
+│ UI clients                                     │
+│ Web BFF / planned desktop / experimental iOS  │
 └───────────────────┬───────────────────────────┘
                     │ commands / view models
                     ▼
@@ -36,7 +41,11 @@
            SQLite + encrypted audio + cache
 ```
 
-## macOS deployment
+## Client and deployment surfaces
+
+No client surface is allowed to bypass the runtime authorization policy.
+Web, desktop, and mobile are adapters around the same command/view-model
+boundary, not independent consent implementations.
 
 ### Apple Silicon Macs
 
@@ -65,6 +74,18 @@
 -第二路重型 ASR；
 -可选远程 GPU；
 -密钥保护、限流和健康检查。
+
+### Web prototype
+
+The branch-only Web implementation uses a server-side BFF. The browser receives
+view state and sends explicit commands; it does not receive gateway credentials
+or direct personal-TTS authority.
+
+### iOS/headset experiment
+
+The mobile branch uses SwiftUI, XcodeGen, 16 kHz PCM capture and a Viaim adapter.
+It remains experimental until signed-device, disconnect, routing, vendor-license
+and fallback checks pass. Headset presence or gestures are never consent.
 
 ## Process model
 

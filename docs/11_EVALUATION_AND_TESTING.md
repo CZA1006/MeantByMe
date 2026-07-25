@@ -1,5 +1,23 @@
 # 11｜评测、测试与验收
 
+## Verified branch test matrix
+
+Independent verification on 2026-07-26 used isolated Git archives, Python
+3.11.8 and `PYTHONPATH=src:.`.
+
+| Snapshot | Result | Scope |
+|---|---:|---|
+| `main` at the audited baseline | 24 passed | Mock runtime, policies, storage and safety |
+| `origin/develop` (`3255d7d`) | 142 passed | Runtime, adapters, gateway, Web, evaluation |
+| `origin/feature/earPhones` (`23644de`) | 172 passed | Above plus command, QA, profile and headset adapters |
+
+The larger suites emitted deprecation warnings for `audioop` and the legacy
+Starlette/httpx TestClient integration. Documentation elsewhere claiming 120 or
+167 tests is stale.
+
+These are implementation checks, not clinical accuracy, medical-device,
+real-patient, physical-device, or production-security claims.
+
 ## Evaluation philosophy
 
 不要从模拟数据声称临床准确率。Hackathon 评测证明的是：
@@ -103,6 +121,17 @@ TTS failure does not mark spoken
 Memory failure falls back to generic mode
 None of these preserves confirmed fragments
 Go back reverses only reversible state
+```
+
+Every implementation track must additionally verify:
+
+```text
+profile import does not grant voice authorization
+caregiver or system context remains distinguishable
+device/headset presence cannot confirm
+QA mode cannot speak as the patient
+provider retry cannot duplicate Gold writes
+browser cannot bypass the BFF/runtime command boundary
 ```
 
 ## Integration scenarios

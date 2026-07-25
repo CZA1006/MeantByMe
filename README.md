@@ -1,98 +1,128 @@
 # MeantByMe｜意由我
 
 > **Completed with AI. Meant by me.**  
-> AI 可以帮助补全表达，但意思必须由本人确认。
+> AI 可以帮助补全表达，但意思与声音授权必须由本人确认。
 
-MeantByMe is a **patient-bound, consent-first communication agent** for people whose cognition and communicative intent remain relatively clear, but whose speech production is impaired, fragmented, slow, or temporarily unavailable.
+MeantByMe is a consent-first communication agent for people whose intent remains
+clear while speech is fragmented, slow, impaired, or temporarily unavailable.
+It treats ASR, language models, personal memory, and context as evidence—not
+authority.
 
-## Core principle
+[Project hub](https://cza1006.github.io/MeantByMe/) ·
+[Web demo](https://cza1006.github.io/MeantByMe/demo.html) ·
+[QR hub release](https://github.com/CZA1006/MeantByMe/releases/tag/qr-hub-v1) ·
+[Documentation](docs/README.md)
 
-> **The Agent may complete the sentence, but it must never decide the meaning.**
+## Safety contract
 
-MeantByMe treats ASR, language models, patient memory, and context as **evidence rather than authority**. It captures fragmented speech, retrieves verified patient-specific memory, proposes a small number of possible expressions, and speaks in the patient’s authorized voice only after explicit confirmation.
+The model may propose an expression, but it may not decide what the person meant
+or authorize speech on their behalf.
 
-## Hackathon MVP
+- Unconfirmed candidates never use the patient's personal voice.
+- Silence, timeout, caregiver action, confidence, and device presence are not
+  consent.
+- AI output never writes directly to Gold patient memory.
+- Caregiver context remains distinguishable from patient-confirmed intent.
+- Rejection never becomes a patient preference.
+- High-risk expressions require stricter confirmation.
+- `Stop`, `Back`, `None of these`, and `Switch input method` remain available.
+- Every spoken expression is traceable to evidence, completion, confirmation,
+  and authorization state.
 
-A native macOS desktop application with:
+The complete engineering invariants are in [AGENTS.md](AGENTS.md), and the
+frozen product decisions are in [DECISIONS.md](DECISIONS.md).
 
-- iFLYBUDS Air 2 as microphone and private audio output;
-- primary and secondary ASR evidence;
-- stable / uncertain fragment extraction;
-- patient-bound verified memory;
-- progressive clarification;
-- 2–3 expression candidates plus “None of these”;
-- final private readback;
-- deterministic personal-voice authorization;
-- StepAudio personal TTS;
-- Memory & Decision Trace;
-- verified memory writeback;
-- mock, cloud, and fallback modes.
-
-## Golden path
+## How it works
 
 ```text
-Fragmented speech
+fragmented speech
 → ASR evidence
 → stable / uncertain fragments
-→ verified patient memory retrieval
-→ clarification or candidates
-→ patient selection
-→ final private readback
-→ explicit authorization
+→ patient-scoped verified memory retrieval
+→ clarification or candidate expressions
+→ explicit patient selection
+→ private final readback
+→ explicit expression authorization
 → personal-voice output
 → expression receipt
 → verified memory update
 ```
 
-## Why this is different
+The architecture uses a deterministic shell around probabilistic services:
 
-Most voice agents optimize for autonomous completion. MeantByMe optimizes for **safe recovery when the model is wrong**.
+```text
+UI clients
+→ MeantByMe runtime
+→ state machine and consent policies
+→ provider protocols
+→ ASR / intent / TTS / storage adapters
+```
 
-The system separates:
+Core runtime code stays independent from UI frameworks and provider SDKs.
 
-- what the patient directly expressed;
-- what ASR inferred;
-- what AI completed;
-- what memory influenced;
-- what the patient confirmed;
-- what the system was authorized to speak.
+## Repository status
 
-## Development environment
+This repository currently contains several implementation tracks. Branch names
+describe history, not clean component ownership:
 
-The team develops with Claude Code and Codex on:
+| Track | Branch | Current contents | Verified tests |
+|---|---|---|---:|
+| Canonical baseline and project hub | `main` | Deterministic mock runtime, schemas, safety policies, documentation, GitHub Pages | 24 |
+| Integrated web/backend prototype | `develop` and `frontend` | Same commit: runtime, gateway, responsive Web BFF/demo, cloud adapters, evaluation | 142 |
+| Headset/mobile experiment | `feature/earPhones` | iOS client, Viaim headset adapter, command/QA experiments, profile persistence | 172 |
 
-- two Apple Silicon Macs;
-- one Intel Mac.
+Test counts were independently verified on 2026-07-26 with Python 3.11.8.
+`develop` and `frontend` currently point to the same commit and must not be
+treated as independent source branches. The mobile branch is a broad
+experimental fork, not a merge-ready iOS-only patch. See the
+[branch audit](docs/BRANCH_AUDIT.md) for exact commits and integration risks.
 
-Heavy models are cloud- or remote-GPU-first. The Mac application owns interaction, state, memory, authorization, trace, and fallback behavior.
+## Run the canonical mock runtime
 
-## Milestone 1 mock runtime
-
-Milestone 1 is a headless, deterministic vertical slice. It uses fixture ASR,
-verified SQLite memory, deterministic candidates, cached TTS, and no network.
+Requirements: Python 3.11.
 
 ```bash
+python3.11 -m venv .venv
 ./.venv/bin/python -m pip install -e '.[test]'
 ./.venv/bin/python -m meantbyme --mode mock
 ./.venv/bin/python -m pytest
 ```
 
-The mock command prints a structured event trace and exits successfully only
-when the session reaches `completed`.
+The mock flow is deterministic and uses fixture ASR, patient-scoped SQLite
+memory, deterministic candidates, cached TTS, and no network. It exits
+successfully only after the session reaches `completed`.
+
+For the Web/gateway prototype or iOS experiment, switch to the corresponding
+branch and follow its component README. Never place provider secrets in source,
+frontend bundles, logs, fixtures, or commits.
 
 ## Documentation
 
-- [Product vision](docs/01_PRODUCT_VISION.md)
-- [Storytelling and demo](docs/02_STORYTELLING_AND_DEMO.md)
+- [Documentation index and authority](docs/README.md)
+- [Current status](docs/STATUS.md)
+- [Branch and code audit](docs/BRANCH_AUDIT.md)
 - [Technical architecture](docs/03_TECHNICAL_ARCHITECTURE.md)
 - [Agent runtime](docs/04_AGENT_RUNTIME.md)
 - [Memory and personalization](docs/05_MEMORY_AND_PERSONALIZATION.md)
-- [Interaction and accessibility](docs/06_INTERACTION_AND_ACCESSIBILITY.md)
-- [Models and integrations](docs/07_MODELS_AND_INTEGRATIONS.md)
 - [Security and consent](docs/08_SECURITY_AND_CONSENT.md)
-- [Development plan](docs/09_DEVELOPMENT_PLAN.md)
-- [Team ownership](docs/10_TEAM_OWNERSHIP.md)
+- [Integration plan](docs/09_DEVELOPMENT_PLAN.md)
 - [Evaluation and testing](docs/11_EVALUATION_AND_TESTING.md)
-- [Research references](docs/12_RESEARCH_REFERENCES.md)
-- [API schemas](docs/13_API_SCHEMAS.md)
+- [API and domain schemas](docs/13_API_SCHEMAS.md)
 - [Repository structure](docs/14_REPO_STRUCTURE.md)
+- [Contribution guide](CONTRIBUTING.md)
+- [Code of conduct](CODE_OF_CONDUCT.md)
+- [Security policy](SECURITY.md)
+
+## Project boundary
+
+MeantByMe is a research and communication-assistance prototype. It is not a
+medical diagnosis system, treatment decision system, mind-reading system, or
+clinically certified medical device. Do not use it as the sole channel for
+emergency communication.
+
+## License
+
+Copyright © 2026 MeantByMe contributors. Released under the
+[MIT License](LICENSE). The license permits use of the software; it does not
+grant rights to patient data, voice recordings, voice identities, third-party
+models, vendor SDKs, names, or trademarks.

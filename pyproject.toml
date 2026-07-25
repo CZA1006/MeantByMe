@@ -6,10 +6,24 @@ build-backend = "setuptools.build_meta"
 name = "meantbyme"
 version = "0.1.0"
 description = "Consent-first communication agent runtime"
+readme = "README.md"
+license = {file = "LICENSE"}
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2",
 ]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Human Machine Interfaces",
+]
+
+[project.urls]
+Homepage = "https://cza1006.github.io/MeantByMe/"
+Repository = "https://github.com/CZA1006/MeantByMe"
+Issues = "https://github.com/CZA1006/MeantByMe/issues"
 
 [project.optional-dependencies]
 test = [

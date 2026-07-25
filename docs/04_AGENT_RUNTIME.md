@@ -1,5 +1,9 @@
 # 04｜Agent Runtime 与 Workflow
 
+> **Authority:** This state machine and [DECISIONS.md](../DECISIONS.md) govern
+> every client. Branch-local command, QA, or mobile flows may not create a second
+> authorization path.
+
 ## Why a domain runtime
 
 通用 Agent 通常：
@@ -64,6 +68,10 @@ GO_BACK
 SWITCH_INPUT_METHOD
 REQUEST_HELP
 ```
+
+`NONE_OF_THESE` is a required candidate-selection command even when represented
+separately from the global-command enum. Every client must keep `STOP`,
+`GO_BACK`, `NONE_OF_THESE`, and `SWITCH_INPUT_METHOD` reachable.
 
 ## Expression levels
 

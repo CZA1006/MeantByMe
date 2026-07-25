@@ -1,5 +1,10 @@
 # 13｜核心 API 与 Domain Schemas
 
+> **Schema authority:** Domain models and consent transitions on `main` are
+> canonical. Gateway/Web endpoints on `develop` and command/QA endpoints on
+> `feature/earPhones` are branch-only until integrated. Clients must negotiate
+> compatibility; branch presence does not make an endpoint stable.
+
 建议使用 Python 3.11 + Pydantic。
 
 > **注:** 本文档的 schema 为单一事实源。字段/枚举冲突的裁决见 [DECISIONS.md](../DECISIONS.md)(D1 状态枚举、D2 记忆类型、D3 receipt 字段、D9 confirmation_method)。
@@ -229,6 +234,8 @@ class ExpressionReceipt(BaseModel):
 
 ## Gateway endpoints
 
+Implemented on `develop`/`frontend`:
+
 ```text
 POST /v1/asr/primary
 POST /v1/asr/secondary
@@ -236,6 +243,19 @@ POST /v1/intent/propose
 POST /v1/tts/synthesize
 GET  /v1/health
 ```
+
+The gateway also contains a voice-enrollment path on that branch. Enrollment
+creates or references a voice profile; it does not authorize any expression.
+
+Experimental on `feature/earPhones`:
+
+```text
+POST /v1/commands/interpret
+QA and profile/BFF routes
+```
+
+QA responses must use neutral output and cannot mint `AuthorizedExpression`,
+write Gold memory, or impersonate patient-confirmed speech.
 
 Memory 默认本地。若暴露接口：
 
@@ -245,3 +265,7 @@ POST /v1/memory/write-verified
 ```
 
 必须 enforce patient scope 和 authorization。
+
+Memory write endpoints must require explicit patient confirmation evidence and
+an idempotency key. Profile import cannot call `write-verified` on behalf of the
+patient.

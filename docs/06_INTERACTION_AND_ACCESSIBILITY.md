@@ -1,5 +1,8 @@
 # 06｜患者交互与无障碍
 
+> Web、desktop 和 experimental iOS 必须共享同一确认语义。触控、耳机连接、
+> 音量变化、超时、沉默、照护者操作和模型置信度都不能映射为 Yes。
+
 ## Goal
 
 > **用最少的确认动作，排除最多的错误候选，并保留已经确认的表达进度。**
@@ -13,7 +16,7 @@
 -高对比；
 -最少文字；
 -耳机私密播放；
--Stop / Back / None of these 始终可见。
+-Stop / Back / None of these / Switch input 始终可达。
 
 ### Memory & Decision Trace
 

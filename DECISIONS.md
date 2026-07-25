@@ -1,5 +1,14 @@
 # DECISIONS.md — 决策冻结
 
+> **Canonical registry:** 本文件在 `main` 上的版本是唯一决策编号来源。新决策
+> 必须使用尚未占用的 `D<number>`。未合入分支上的提案统一使用
+> `EXP-<AREA>-<number>`，不得用相同 D 编号表达不同语义。
+>
+> 2026-07-26 分支审计发现：`develop` 的 D21 是受限的 Context-Memory
+> 排序权重；`feature/earPhones` 又把 D21 用于 Gold/Silver 同权。后者现记为
+> `EXP-MEM-01`，因违反护理者来源区分和 Gold 写入规则，**未被采纳**。详见
+> [分支审计](docs/BRANCH_AUDIT.md)。
+
 本文件冻结在正式编码前必须统一的架构决策,解决 `docs/` 各文档之间的冲突与缺口。
 
 - **权威原则:** 代码中的 `core/domain` 与 SQLite schema 为单一事实源(single source of truth);文档反向对齐代码,不再维护两份散文。
@@ -317,6 +326,81 @@ class ConfirmedContext(BaseModel):
 
 ---
 
+## D17 — Gold 在候选排序中严格高于 Silver 🔴
+
+**决定:** 同等文本关系下，患者明确确认的 Gold 排序信号必须严格高于
+护理者辅助或间接验证的 Silver。排序理由必须显示来源级别。分数只影响顺序，
+不得选择候选、跳过确认或授权声音。
+
+**理由:** 资料可被使用不代表来源可以被抹平；患者确认必须保持最高证据级别。
+
+**影响:** ranker、Memory Trace、来源与安全测试。
+
+---
+
+## D18 — CJK-aware tokenization 🔴
+
+**决定:** CJK 字符按字符粒度参与确定性 tokenization，Latin、数字、下划线和
+撇号组成的词保持整词行为。locked-token 两侧必须使用同一 tokenizer。不得
+改变 normalized hash、幂等键或英文既有输出。
+
+**理由:** 连续中文不能被当作单个 token，否则槽位、overlap、排序和锁定片段
+检查会系统性失效。
+
+**影响:** 文本工具、uncertainty、ranker、中文回归测试。
+
+---
+
+## D19 — 持久化 Context-Memory 与自动情景召回 🔴
+
+**决定:** Context-Memory 与 semantic memory 分开检索和解释，且始终保留
+`patient_id`、来源与 verification level。护理者 context 只能是 Silver；
+患者明确确认后才能成为 Gold。Context 不得进入声音授权或被当作当前同意。
+
+**理由:** 情景有助于排序，但“谁提供、患者是否确认”是安全语义，不是可丢弃
+的元数据。
+
+**影响:** repository、context composer、Memory Trace、跨患者与来源测试。
+
+---
+
+## D20 — Simulated Profile Test Bundle 与最小披露 🔴
+
+**决定:** 测试画像必须声明 schema、`simulated=true`、患者 scope、资料来源、
+verification、sensitivity 与 prompt eligibility。只有显式的机器可读区块可
+进入运行时；自由叙事、产品需求、研究假设和 evaluator 答案不得进入 prompt。
+
+**理由:** 防止测试答案泄漏、跨画像污染和把研究叙事误当患者事实。
+
+**影响:** profile import、demo fixtures、prompt assembly、评测声明。
+
+---
+
+## D21 — 受限的 Context-grounding 排序权重 🔴
+
+**决定:** 已检索 Context-Memory 可对相关候选提供有上限的小幅排序加分；
+Gold context 上限高于 Silver caregiver context。该信号低于 Gold semantic
+exact/support，只能调整 ordering，不能写入 semantic support、选择候选、
+跳过最终确认、创建 Gold memory 或授权声音。
+
+**理由:** 允许可追踪情景帮助相近候选排序，同时保持语义证据、来源和授权边界。
+
+**影响:** ranker、context trace、排序与不自动选择测试。
+
+---
+
+## EXP-MEM-01 — “统一可信档案”提案（未采纳）
+
+`feature/earPhones` 曾提议把历史 Gold/Silver 视为同权，并认为无需区分患者与
+护理者角色。该方向可以保留“反馈幂等、正负样例映射、profile scope”等实现
+想法，但当前语义违反项目不变量与 D17/D19/D20，禁止作为 canonical memory
+规则或直接合入 `main`。
+
+重新提出时必须保留患者/护理者/AI 来源、显式患者确认、跨患者隔离、一次性
+声音授权和可审计写入。
+
+---
+
 ## 决策汇总
 
 | ID | 主题 | 阻塞里程碑 1 | Owner | 状态 |
@@ -337,6 +421,12 @@ class ConfirmedContext(BaseModel):
 | D14 | Ranker 不自动选(断言) | 🔴 | Nick | ✅ 已冻结 |
 | D15 | 两层 consent 模型 | 🔴 | Nick | ✅ 已冻结 |
 | D16 | 高风险 strict 标志 | 🔴 | Nick | ✅ 已冻结 |
+| D17 | Gold 排序严格高于 Silver | 🔴 | Runtime | ✅ 已冻结 |
+| D18 | CJK-aware tokenization | 🔴 | Runtime | ✅ 已冻结 |
+| D19 | Context-Memory 来源与召回 | 🔴 | Runtime | ✅ 已冻结 |
+| D20 | Simulated Profile 最小披露 | 🔴 | Runtime / Demo | ✅ 已冻结 |
+| D21 | 受限 Context-grounding 排序 | 🔴 | Runtime | ✅ 已冻结 |
+| EXP-MEM-01 | Gold/Silver 同权提案 | — | Mobile experiment | ❌ 未采纳 |
 
 **开工前必须确认的阻塞项:** D1、D2、D4、D5(D3 的 schema 部分),及 agent/runtime 的 D10–D16。全部已冻结。
 
@@ -349,3 +439,5 @@ class ConfirmedContext(BaseModel):
 | 2026-07-23 | D1–D9 | 初次提出 | 初始 onboarding review |
 | 2026-07-23 | D1–D9 | 全部确认冻结 | 决策负责人确认 |
 | 2026-07-23 | D10–D16 | 新增 agent/runtime 设计决策并冻结 | Nick 确认 |
+| 2026-07-24 | D17–D21 | 记录来源、CJK、Context 与测试画像决策 | develop |
+| 2026-07-26 | D21 / EXP-MEM-01 | 解决分支编号冲突；拒绝 Gold/Silver 同权 | branch audit |

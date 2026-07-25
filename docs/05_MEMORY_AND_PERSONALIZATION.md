@@ -38,9 +38,21 @@ voice profile、授权范围、有效期、输出渠道和撤销状态。授权�
 
 ## Verification levels
 
+Verification level is safety semantics, not a display preference. It must not be
+collapsed into a generic `trusted` flag:
+
+```text
+patient-confirmed Gold > caregiver-assisted Silver > Unverified
+```
+
+Equal text does not imply equal authority. Gold and Silver may both inform
+ordering, but their source and weight remain distinguishable. See D17, D19,
+D20 and D21 in [DECISIONS.md](../DECISIONS.md).
+
 ### Gold
 
-患者明确确认。可用于检索、排序、prototype 和未来模型适配。
+患者明确确认。可用于检索、排序、prototype 和经独立审核的未来模型适配。
+Profile import、最终表达确认以外的系统动作、AI 推断和护理者录入不能创建 Gold。
 
 ### Silver
 
@@ -49,6 +61,10 @@ voice profile、授权范围、有效期、输出渠道和撤销状态。授权�
 ### Unverified
 
 ASR、LLM 猜测、未完成会话或超时。只可在临时 session 使用。
+
+`feature/earPhones` 中 Gold/Silver 同权的 branch-local 提案已重命名为
+`EXP-MEM-01` 且未采纳。动态反馈可以继续研究，但不得抹去来源、隐式创建
+Gold、跨 patient scope 或扩大个人声音授权。
 
 ## Immediate learning
 
@@ -59,6 +75,9 @@ speech attempt
 → output
 → verified memory update
 ```
+
+最终确认只允许写入本次被确认的表达映射，不自动证明新的稳定人物事实。稳定
+profile/context 事实需要独立、可审计的确认来源。
 
 立即更新：
 

@@ -3,6 +3,8 @@
 ## Product boundary
 
 MeantByMe 是沟通辅助原型，不是医疗器械、诊断系统或临床决策系统。
+MIT licensing permits software reuse but does not certify the system, grant
+rights to patient data or voice identity, or override third-party licenses.
 
 ## Data categories
 
@@ -42,6 +44,10 @@ caregiver_context
 system_context
 ```
 
+来源字段是安全边界。Branch-local profile 或 dynamic-memory 实现不得把
+`caregiver_context`、`system_context` 或 `ai_candidate` 重新标记为
+`patient_confirmed`，也不得通过统一的 `trusted` 标签隐藏来源。
+
 ## Consent scopes
 
 分别授权：
@@ -57,6 +63,9 @@ system_context
 -与护理者共享。
 
 所有授权可撤销。
+
+Profile import、登录、耳机连接、设备配对和资料信任均不附带 personal voice
+authorization。声音同意与本次表达授权是两个独立条件。
 
 ## Personal voice
 
@@ -182,3 +191,7 @@ MVP：
 ## Demo declaration
 
 所有 Demo Patient 数据标记 simulated。禁止暗示真实患者验证、临床准确率、医疗批准或临床级眼动。
+
+Branch test counts only describe automated contract checks. They are not user
+study results, clinical evidence, accessibility validation, or production
+security certification.

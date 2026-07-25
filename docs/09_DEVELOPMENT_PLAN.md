@@ -1,181 +1,96 @@
-# 09｜三天开发计划
+# 09｜集成与产品化计划
 
-## Freeze before coding
+本计划取代早期“三天开发计划”。当前目标不是继续扩大分支，而是把已完成的
+mock、Web/backend 与移动端实验按安全边界拆分、验证并逐步进入 `main`。
 
-冻结：
+## Stage 0 — Canonical baseline
 
-- 主 Demo 句；
--blocked-path 句；
--Demo Patient；
--state machine；
--API schemas；
--primary model choices；
--P0 confirmation；
--Mock fixtures；
--team ownership；
--repo layout。
+- `main` 保存项目身份、不变量、决策、文档、许可和发布入口。
+- 建立 MIT、贡献、安全、PR 模板、状态和分支审计文档。
+- 所有文档区分 canonical、branch-only、experimental 和 planned。
+- 冻结决策编号；分支实验不得复用 D 编号。
 
-## Day 0 — two-hour spikes
+Exit gate:
 
-验证：
+- canonical docs 互相链接且无来源冲突；
+- mock runtime 和安全测试通过；
+- 无 secrets、真实患者数据或个人语音材料进入提交。
 
-1. Air 2 在 macOS 的输入和输出；
-2. 录制 PCM/WAV；
-3. viaim credentials 和 latency；
-4. StepFun structured output；
-5. StepAudio TTS；
-6. second ASR viability；
-7. PySide6 microphone permission；
-8. 一条 mock end-to-end fixture。
+## Stage 1 — Runtime and evaluation
 
-不能快速验证的组件立即降级。
+从 `develop` 拆出可审查的 runtime/evaluation pull request：
 
-## Day 1 — deterministic golden path
+1. CJK tokenization 与回归测试；
+2. Context-Memory repository 与 patient scope；
+3. Profile bundle 最小披露；
+4. bounded context-grounding ranker；
+5. evaluation runner 与模拟数据声明。
 
-### Nick
+Exit gate:
 
-- domain schemas；
--state machine；
--command handler；
--provider protocols；
--mock providers；
--authorization policy；
--candidate schema。
+- D1–D21 均有对应测试；
+- core 不依赖 UI、FastAPI 或 provider SDK；
+- mock path 不访问网络；
+- 迁移与 rollback 清楚；
+- 旧 24 项与新增测试全部通过。
 
-### Jiayi
+## Stage 2 — Gateway and Web
 
-- FastAPI gateway；
--SQLite；
--session/event persistence；
--viaim/StepFun skeleton；
--mock endpoints；
--secret config。
+`develop` 与 `frontend` 当前是同一 commit。保留一个 integration branch，
+停止把它们视为两个独立代码源，并按组件拆分：
 
-### An
+1. gateway contracts、认证、限流、超时和输入验证；
+2. cloud adapters 与 deterministic mocks；
+3. server-side Web BFF/session boundary；
+4. responsive UI 与 brand assets；
+5. browser safety and cache behavior。
 
-- PySide6 shell；
--listening；
--candidate；
--final review；
--static Trace；
--large buttons。
+Exit gate:
 
-### Exit
+- 浏览器无法获得 gateway token 或直接调用 personal TTS；
+- BFF 只能通过 runtime command 驱动状态；
+- provider failure 不产生 spoken 或 Gold write；
+- Web/gateway/safety tests 通过；
+- deployment configuration 有 secrets 和 fallback 说明。
 
-```text
-fixture audio
-→ mock ASR
-→ mock memory
-→ candidates
-→ confirmation
-→ authorization
-→ cached voice
-→ memory write
-```
+## Stage 3 — iOS and headset extraction
 
-## Day 2 — real models and personalization
+不要直接合并 `feature/earPhones`。从最新 `main` 重新建立小型分支：
 
-### Nick
+1. 共享 API schema；
+2. iOS shell 与 XcodeGen project；
+3. audio routing 和 16 kHz PCM encoder；
+4. Viaim adapter behind a protocol plus a mock；
+5. explicit command confirmation；
+6. private readback / public output routing。
 
-- transcript alignment；
--uncertainty router；
--memory retrieval input；
--LLM prompt validation；
--ranker；
--Quick Intent / Free Expression。
+QA runtime、MySQL profile storage、dynamic memory 分别独立评审。
+`EXP-MEM-01` 不进入集成。
 
-### Jiayi
+Exit gate:
 
-- real viaim；
--real StepFun LLM/TTS；
--second ASR or fallback；
--timeout/retry；
--event streaming；
--patient-scoped storage。
+- simulator build；
+- signed arm64 physical-device test；
+- vendor SDK version/license/provisioning documented；
+- headset missing/disconnect/reconnect/timeout paths tested；
+- neutral preview and personal-voice authorization boundaries tested；
+- Stop/Back/None/Switch remain reachable。
 
-### An
+## Stage 4 — Release hardening
 
-- dynamic Trace；
--category clarification；
--None of these；
--Generic/Personalized；
--Memory update；
--profile/device screens。
+- 在 CI 固定 Python 3.11 并运行 unit/integration/safety suites。
+- 移除 `audioop` 与 legacy TestClient deprecation warnings。
+- 运行 dependency/license/secret scanning。
+- 验证 GitHub Pages、release assets、QR code 和 README links。
+- 生成明确版本、changelog、known limitations 和 rollback instructions。
+- 任何真实用户研究先完成伦理、隐私、同意和数据保留审核。
 
-### Exit
+## Branch policy
 
-```text
-real mic
-→ ASR
-→ memory
-→ candidate
-→ confirmation
-→ TTS
-```
+- `main`: canonical, protected, releasable。
+- `integration/<area>`: 短期集成分支。
+- `feature/<area>`: 单一可审查能力。
+- `experiment/<area>`: 不承诺兼容或合并。
+- 已被合并或取代的重复 branch 应在确认后删除。
 
-## Day 3 — stability and presentation
-
-### Nick
-
-- freeze prompts；
--20–30 samples；
--fix unsupported completion；
--safety tests；
--freeze demo。
-
-### Jiayi
-
-- deploy；
--cache；
--offline mock；
--arm64 packaging support；
--second Mac deployment；
--backup DB/audio。
-
-### An
-
-- visual polish；
--error states；
--English demo；
--backup video；
--track-specific presentation。
-
-## Do not do on Day 3
-
-- 新模型；
--LangGraph；
--ASR 微调；
--临时安装 CosyVoice；
--眼动；
--电话注入；
--云向量数据库；
--更换前端框架。
-
-## Integration
-
-每天至少合并两次：午饭前和结束前。每次合并后运行完整 mock golden path。
-
-## Branches
-
-```text
-main
-develop
-nick/runtime
-jiayi/backend
-an/frontend
-```
-
-## Demo-ready
-
-- arm64 app 可打开；
--麦克风权限正常；
--Air 2 或内置麦克风正常；
--mock 一键启动；
--real mode 可配置；
--golden path 完成；
--blocked path 完成；
--Trace 更新；
--Memory 更新；
--Unauthorized Voice Rate = 0；
--second Mac 可备份；
--备用视频完成。
+每个 PR 必须说明来源 branch、安全不变量、测试环境、失败路径和回滚方法。

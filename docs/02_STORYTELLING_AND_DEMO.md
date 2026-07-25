@@ -1,5 +1,10 @@
 # 02｜Storytelling 与 Demo
 
+> **Demo disclosure:** All people, profiles, audio, memory, expected answers and
+> receipts used in the public demo must be simulated or appropriately licensed.
+> A successful demo is evidence of the designed interaction and safety contract,
+> not clinical efficacy.
+
 ## Demo 要证明什么
 
 1. Agent 能承认证据不足；
@@ -7,7 +12,7 @@
 3. Agent 能通过低负担澄清恢复表达；
 4. AI 补全部分始终可见；
 5. 未确认内容不能使用本人声音；
-6. 确认后的表达会进入 Verified Memory。
+6. 只有患者明确确认且满足写入策略的表达才会进入 Gold Memory。
 
 ## 开场
 

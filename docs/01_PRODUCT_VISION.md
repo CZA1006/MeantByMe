@@ -1,5 +1,9 @@
 # 01｜产品定位与设计原则
 
+> **Project status:** This is the canonical product boundary, not a claim of
+> clinical validation. Implemented surfaces and branch status are tracked in
+> [STATUS.md](STATUS.md).
+
 ## 一句话定位
 
 > **一个与患者绑定的可信表达 Agent：它从残缺语音和患者过往已确认 Memory 中提出可能表达，通过低负担的私密澄清，让患者本人确认后才使用其声音对外表达。**

@@ -1,10 +1,9 @@
 # MeantByMe QR Hub Design QA
 
-- Source visual truth: `/Users/caizhuoang/.codex/generated_images/019f9a94-6d15-7f21-9017-1731b04f579f/call_xxQT9RNndJUErnUuAxwMFbba.png`
-- Implementation: `/Users/caizhuoang/MeantByMe/docs/index.html`
-- Desktop screenshot: `/Users/caizhuoang/MeantByMe/.artifacts/pages-redesign-desktop-viewport.png`
-- Mobile screenshot: `/Users/caizhuoang/MeantByMe/.artifacts/pages-redesign-mobile-viewport.png`
-- Combined comparison: `/Users/caizhuoang/MeantByMe/.artifacts/design-qa-comparison.png`
+- Implementation: [`docs/index.html`](docs/index.html)
+- Brand source: [`docs/assets/logo-lockup-zh-dark.svg`](docs/assets/logo-lockup-zh-dark.svg)
+- Visual-reference and viewport screenshots were generated during the design QA
+  session and are intentionally not treated as portable source files.
 - Desktop viewport: 1440 × 1024 CSS px, device scale factor 1
 - Mobile viewport: 390 × 844 CSS px, device scale factor 1
 - Source pixels: 1536 × 1024

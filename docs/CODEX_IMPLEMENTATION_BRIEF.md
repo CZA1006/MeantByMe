@@ -1,5 +1,13 @@
 # Codex Implementation Brief — Milestone 1
 
+> **Historical brief:** This file records the instructions used to create the
+> original deterministic mock slice. The work is complete and the named branch,
+> test count, and D1–D16 scope are historical. For current work, use
+> [STATUS.md](STATUS.md), [09_DEVELOPMENT_PLAN.md](09_DEVELOPMENT_PLAN.md),
+> [../AGENTS.md](../AGENTS.md), and the canonical D1–D21 registry in
+> [../DECISIONS.md](../DECISIONS.md). Do not execute the branch or “do not push”
+> instructions below as current repository policy.
+
 本文件是交给 Codex 的实现任务规格。它把已冻结的决策([../DECISIONS.md](../DECISIONS.md) D1–D16)和规格文档打包成一份自包含任务,使 Codex 无需重新决策即可落地代码。范围严格限定在**里程碑 1 的 mock 垂直切片**:headless、不涉及 PySide6/云/打包,在 Intel Mac 上即可跑通。
 
 审查者:Nick(agent/runtime owner)。Codex 完成后应对照 D1–D16 与安全不变量审查产出。
@@ -8,7 +16,9 @@
 
 ## Task for Codex
 
-You are implementing **Milestone 1** of the MeantByMe project. Work in the existing git repo at `/Users/caizhuoang/MeantByMe` on branch `nick/runtime` (create it from `main` if not checked out). **Do not push**; leave commits local for review.
+You are implementing **Milestone 1** of the MeantByMe project. Work in the
+existing repository root on branch `nick/runtime` (create it from `main` if not
+checked out). **Do not push**; leave commits local for review.
 
 ### Read first (authoritative — do not re-decide anything they settle)
 - `AGENTS.md` — architecture rules, forbidden dependencies, required tests, definition of done

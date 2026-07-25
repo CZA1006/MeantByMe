@@ -1,8 +1,16 @@
 # 07｜模型与服务集成
 
-## Three-day decision
+> **Current status:** Mock providers are canonical on `main`; gateway/cloud
+> adapters are branch-only on `develop`/`frontend`; the Viaim Swift headset SDK
+> integration is experimental on `feature/earPhones`.
+
+## MVP decision
 
 三天内不微调主模型。采用成熟 API、一个本地 fallback、Patient Memory 和确定性授权。
+
+No provider is authoritative. An ASR, LLM, TTS, embedding model, headset SDK,
+or QA model can return evidence or candidates but cannot select, confirm,
+authorize, or write Gold memory.
 
 ## Final chain
 
@@ -47,6 +55,10 @@ iFLYBUDS Air 2
 - SDK 早期；
 -耳机触控回调未必开放；
 -必须保留标准蓝牙音频 fallback。
+
+The iOS experiment references a local vendor Swift package that is not included
+in this repository. Before release, pin its version, document its license and
+privacy behavior, provide a protocol-level mock, and verify signed arm64 devices.
 
 ## Secondary ASR
 
