@@ -3,169 +3,443 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#14231d">
-  <title>MeantByMe｜项目资料</title>
-  <meta name="description" content="MeantByMe 项目演示、GitHub、研究论文、商业计划书与产品定义。">
+  <meta name="theme-color" content="#07110e">
+  <meta name="description" content="MeantByMe 是一款 consent-first 沟通代理。观看演示并了解项目代码、研究、商业计划与产品原则。">
+  <title>MeantByMe 意由我｜Consent-first communication</title>
   <style>
     :root {
       color-scheme: light;
+      --night: #07110e;
+      --night-soft: #0d1d17;
       --ink: #14231d;
-      --muted: #5f6e68;
-      --paper: #f7f3ea;
-      --card: rgba(255, 255, 255, 0.88);
-      --accent: #da6b42;
-      --green: #1d5b46;
-      --line: rgba(20, 35, 29, 0.12);
+      --muted: #68756f;
+      --paper: #f6f1e7;
+      --paper-light: #fcfaf5;
+      --accent: #ef6b42;
+      --teal: #40c8c3;
+      --violet: #7d7aff;
+      --line-dark: rgba(255, 255, 255, 0.16);
+      --line: rgba(20, 35, 29, 0.15);
+      --max: 1240px;
     }
 
     * { box-sizing: border-box; }
-
+    html { scroll-behavior: smooth; }
     body {
       margin: 0;
-      min-height: 100vh;
+      min-width: 320px;
       color: var(--ink);
-      background:
-        radial-gradient(circle at 15% 5%, rgba(218, 107, 66, 0.18), transparent 32rem),
-        radial-gradient(circle at 90% 90%, rgba(29, 91, 70, 0.14), transparent 28rem),
-        var(--paper);
+      background: var(--paper);
       font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      -webkit-font-smoothing: antialiased;
     }
-
-    main {
-      width: min(100% - 32px, 560px);
-      margin: 0 auto;
-      padding: 54px 0 40px;
+    a { color: inherit; }
+    a:focus-visible, video:focus-visible {
+      outline: 3px solid var(--teal);
+      outline-offset: 4px;
     }
+    .skip-link {
+      position: fixed;
+      top: -80px;
+      left: 16px;
+      z-index: 10;
+      padding: 10px 14px;
+      color: var(--night);
+      background: white;
+      border-radius: 8px;
+      font-weight: 750;
+    }
+    .skip-link:focus { top: 16px; }
 
-    .eyebrow {
-      margin: 0 0 12px;
+    .hero {
+      position: relative;
+      overflow: hidden;
+      min-height: 720px;
+      color: #f8f5ee;
+      background: var(--night);
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(115deg, transparent 25%, rgba(64, 200, 195, 0.08) 68%, transparent 100%);
+    }
+    .header, .hero-grid, .content {
+      width: min(calc(100% - 48px), var(--max));
+      margin-inline: auto;
+    }
+    .header {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 112px;
+      border-bottom: 1px solid var(--line-dark);
+    }
+    .logo {
+      display: block;
+      width: min(270px, 56vw);
+      height: auto;
+    }
+    .header-link {
+      color: #d9dfdc;
+      font-size: 14px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .header-link:hover { color: white; }
+
+    .hero-grid {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: minmax(310px, 0.78fr) minmax(480px, 1.22fr);
+      align-items: center;
+      gap: clamp(48px, 7vw, 100px);
+      padding: 72px 0 96px;
+    }
+    .eyebrow, .section-kicker {
+      margin: 0 0 22px;
       color: var(--accent);
-      font-size: 13px;
-      font-weight: 800;
-      letter-spacing: 0.12em;
+      font-size: 12px;
+      font-weight: 850;
+      letter-spacing: 0.16em;
       text-transform: uppercase;
     }
-
     h1 {
       margin: 0;
-      font-size: clamp(38px, 10vw, 56px);
-      line-height: 0.96;
+      max-width: 620px;
+      font-size: clamp(54px, 7vw, 92px);
+      line-height: 0.92;
+      letter-spacing: -0.065em;
+    }
+    .tagline {
+      margin: 28px 0 0;
+      font-size: clamp(22px, 2.2vw, 31px);
+      font-weight: 780;
+      letter-spacing: -0.025em;
+    }
+    .intro {
+      max-width: 510px;
+      margin: 18px 0 0;
+      color: #bdc7c2;
+      font-size: 17px;
+      line-height: 1.75;
+    }
+    .demo-cta {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 54px;
+      margin-top: 34px;
+      padding: 0 22px;
+      color: white;
+      background: var(--accent);
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 800;
+      text-decoration: none;
+      transition: transform 160ms ease, background 160ms ease;
+    }
+    .demo-cta:hover { background: #ff7a50; transform: translateY(-2px); }
+    .demo-note { margin: 12px 0 0; color: #87978f; font-size: 12px; }
+
+    .video-block {
+      position: relative;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      border-radius: 18px;
+      background: #020504;
+      box-shadow: 0 34px 90px rgba(0, 0, 0, 0.38);
+      overflow: hidden;
+    }
+    .video-block video {
+      display: block;
+      width: 100%;
+      min-height: 360px;
+      max-height: 560px;
+      object-fit: contain;
+      background: #020504;
+    }
+    .video-caption {
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 18px 20px;
+      color: #cad2ce;
+      background: var(--night-soft);
+      border-top: 1px solid var(--line-dark);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .video-caption strong { color: white; font-size: 14px; }
+
+    .flow {
+      background: var(--paper-light);
+      border-bottom: 1px solid var(--line);
+    }
+    .flow .content { padding: 54px 0; }
+    .section-heading {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 34px;
+    }
+    .section-heading h2 {
+      margin: 0;
+      font-size: clamp(24px, 3vw, 36px);
+      letter-spacing: -0.035em;
+    }
+    .section-heading span { color: var(--muted); font-size: 15px; }
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border-top: 1px solid var(--line);
+    }
+    .step { padding: 27px 8vw 4px 0; }
+    .step + .step { padding-left: 4vw; border-left: 1px solid var(--line); }
+    .step-number { color: var(--accent); font-size: 13px; font-weight: 850; letter-spacing: 0.12em; }
+    .step h3 { margin: 14px 0 7px; font-size: 19px; }
+    .step p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
+
+    .resources .content { padding: 84px 0 48px; }
+    .resource-intro {
+      display: grid;
+      grid-template-columns: 0.8fr 1.2fr;
+      gap: 48px;
+      align-items: end;
+      margin-bottom: 42px;
+    }
+    .resource-intro h2 {
+      margin: 0;
+      font-size: clamp(40px, 6vw, 72px);
+      line-height: 0.95;
       letter-spacing: -0.055em;
     }
-
-    .tagline {
-      margin: 18px 0 8px;
-      font-size: 19px;
-      font-weight: 700;
-    }
-
-    .intro {
-      margin: 0 0 30px;
+    .resource-intro p {
+      max-width: 540px;
+      margin: 0;
       color: var(--muted);
-      font-size: 15px;
-      line-height: 1.7;
+      font-size: 16px;
+      line-height: 1.75;
     }
-
-    .links {
+    .resource-list { border-top: 1px solid var(--ink); }
+    .resource-link {
       display: grid;
-      gap: 12px;
-    }
-
-    .link {
-      display: grid;
-      grid-template-columns: 44px 1fr auto;
+      grid-template-columns: minmax(180px, 0.8fr) minmax(220px, 1.2fr) auto;
       align-items: center;
-      min-height: 76px;
-      padding: 14px 16px;
+      gap: 28px;
+      min-height: 104px;
       color: inherit;
+      border-bottom: 1px solid var(--line);
       text-decoration: none;
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 18px;
-      box-shadow: 0 10px 35px rgba(20, 35, 29, 0.06);
-      transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+      transition: color 140ms ease, padding 140ms ease, background 140ms ease;
     }
-
-    .link:active { transform: scale(0.985); }
-    .link:hover {
-      transform: translateY(-2px);
-      border-color: rgba(218, 107, 66, 0.5);
-      box-shadow: 0 14px 38px rgba(20, 35, 29, 0.1);
+    .resource-link:hover {
+      padding-inline: 18px;
+      color: #145f53;
+      background: rgba(255, 255, 255, 0.48);
     }
-
-    .icon {
-      display: grid;
-      place-items: center;
-      width: 38px;
-      height: 38px;
-      border-radius: 12px;
-      background: rgba(29, 91, 70, 0.09);
-      font-size: 20px;
-    }
-
-    .label { font-size: 17px; font-weight: 800; }
-    .detail { margin-top: 3px; color: var(--muted); font-size: 12px; }
-    .arrow { color: var(--accent); font-size: 22px; font-weight: 700; }
+    .resource-name { font-size: 22px; font-weight: 820; letter-spacing: -0.025em; }
+    .resource-name small { display: block; margin-top: 5px; color: var(--muted); font-size: 12px; font-weight: 650; letter-spacing: 0; }
+    .resource-detail { color: var(--muted); font-size: 14px; line-height: 1.55; }
+    .resource-action { color: var(--accent); font-size: 13px; font-weight: 850; letter-spacing: 0.08em; }
 
     .principle {
-      margin: 28px 0 0;
-      padding: 18px 20px;
-      border-left: 4px solid var(--accent);
-      border-radius: 4px 14px 14px 4px;
-      background: rgba(255, 255, 255, 0.52);
-      font-size: 15px;
-      line-height: 1.65;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: end;
+      gap: 32px;
+      margin-top: 72px;
+      padding: 42px 0 58px;
+      border-top: 4px solid var(--accent);
     }
+    .principle blockquote {
+      max-width: 820px;
+      margin: 0;
+      font-family: ui-serif, "Songti SC", "STSong", serif;
+      font-size: clamp(27px, 4vw, 50px);
+      line-height: 1.35;
+      letter-spacing: -0.025em;
+    }
+    .principle p { margin: 0; color: var(--muted); font-size: 12px; text-align: right; }
 
     footer {
-      margin-top: 26px;
-      color: var(--muted);
+      color: #bec9c3;
+      background: var(--night);
+    }
+    footer .content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 112px;
+      gap: 28px;
       font-size: 12px;
-      text-align: center;
+    }
+    footer a { text-decoration: none; }
+    footer a:hover { color: white; }
+
+    @media (max-width: 900px) {
+      .hero { min-height: auto; }
+      .header, .hero-grid, .content { width: min(calc(100% - 36px), var(--max)); }
+      .header { min-height: 88px; }
+      .hero-grid {
+        grid-template-columns: 1fr;
+        gap: 50px;
+        padding: 58px 0 72px;
+      }
+      .video-block video { min-height: 0; aspect-ratio: 16 / 9; }
+      .resource-intro { grid-template-columns: 1fr; gap: 20px; }
+    }
+
+    @media (max-width: 680px) {
+      .header-link { display: none; }
+      .hero-grid { padding-top: 44px; }
+      h1 {
+        font-size: clamp(43px, 12.2vw, 52px);
+        letter-spacing: -0.055em;
+      }
+      .tagline { font-size: 22px; line-height: 1.25; }
+      .intro { font-size: 15px; }
+      .video-caption { display: block; }
+      .video-caption span { display: block; margin-top: 5px; }
+      .flow .content { padding: 46px 0; }
+      .section-heading { display: block; }
+      .section-heading span { display: block; margin-top: 8px; }
+      .steps { grid-template-columns: 1fr; }
+      .step { padding: 24px 0; }
+      .step + .step { padding-left: 0; border-top: 1px solid var(--line); border-left: 0; }
+      .resources .content { padding-top: 58px; }
+      .resource-link {
+        grid-template-columns: 1fr auto;
+        gap: 8px 18px;
+        min-height: 100px;
+        padding: 18px 0;
+      }
+      .resource-detail { grid-column: 1 / -1; grid-row: 2; }
+      .resource-action { grid-column: 2; grid-row: 1; }
+      .resource-link:hover { padding-inline: 10px; }
+      .principle { grid-template-columns: 1fr; margin-top: 54px; }
+      .principle p { text-align: left; }
+      footer .content { display: block; padding: 28px 0; }
+      footer a { display: inline-block; margin-top: 12px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { transition-duration: 0.01ms !important; }
     }
   </style>
 </head>
 <body>
-  <main>
-    <p class="eyebrow">Consent-first communication agent</p>
-    <h1>MeantByMe<br>意由我</h1>
-    <p class="tagline">Completed with AI. Meant by me.</p>
-    <p class="intro">AI 可以帮助补全表达，但意思必须由本人确认。选择下方入口了解我们的演示、技术、研究与产品。</p>
+  <a class="skip-link" href="#resources">跳到项目资料</a>
 
-    <nav class="links" aria-label="项目资料">
-      <a class="link" href="./demo.html">
-        <span class="icon" aria-hidden="true">▶</span>
-        <span><span class="label">演示视频</span><span class="detail">在线播放完整产品演示</span></span>
-        <span class="arrow" aria-hidden="true">›</span>
-      </a>
+  <section class="hero" aria-labelledby="hero-title">
+    <header class="header">
+      <img class="logo" src="./assets/logo-lockup-zh-dark.svg" alt="意由我，让话说完，让我做主">
+      <a class="header-link" href="https://github.com/CZA1006/MeantByMe">查看 GitHub</a>
+    </header>
 
-      <a class="link" href="https://github.com/CZA1006/MeantByMe">
-        <span class="icon" aria-hidden="true">⌘</span>
-        <span><span class="label">GitHub</span><span class="detail">代码、架构与开发文档</span></span>
-        <span class="arrow" aria-hidden="true">›</span>
-      </a>
+    <div class="hero-grid">
+      <div>
+        <p class="eyebrow">Consent-first communication agent</p>
+        <h1 id="hero-title">MeantByMe<br>意由我</h1>
+        <p class="tagline">Completed with AI. Meant by me.</p>
+        <p class="intro">AI 可以帮助补全表达，但意思必须由本人确认。MeantByMe 帮助患者把话说完，同时把最终决定权始终留给本人。</p>
+        <a class="demo-cta" href="#demo">观看演示视频</a>
+        <p class="demo-note">约 1 分钟 · 可在线播放或全屏观看</p>
+      </div>
 
-      <a class="link" href="https://github.com/CZA1006/MeantByMe/blob/main/docs/12_RESEARCH_REFERENCES.md">
-        <span class="icon" aria-hidden="true">⌕</span>
-        <span><span class="label">相关论文</span><span class="detail">研究依据与参考资料</span></span>
-        <span class="arrow" aria-hidden="true">›</span>
-      </a>
+      <div class="video-block" id="demo">
+        <video controls playsinline preload="metadata" aria-label="MeantByMe 产品演示视频">
+          <source src="https://github.com/CZA1006/MeantByMe/releases/download/qr-hub-v1/meantbyme-demo.mp4" type="video/mp4">
+          你的浏览器暂不支持在线播放。
+        </video>
+        <div class="video-caption">
+          <strong>MeantByMe 产品演示</strong>
+          <span>从表达证据到本人确认，再到授权发声</span>
+        </div>
+      </div>
+    </div>
+  </section>
 
-      <a class="link" href="./business-plan.html">
-        <span class="icon" aria-hidden="true">▥</span>
-        <span><span class="label">商业计划书</span><span class="detail">手机阅读或下载 DOCX</span></span>
-        <span class="arrow" aria-hidden="true">›</span>
-      </a>
+  <section class="flow" aria-labelledby="flow-title">
+    <div class="content">
+      <div class="section-heading">
+        <h2 id="flow-title">确定性的同意流程</h2>
+        <span>Deterministic consent flow</span>
+      </div>
+      <div class="steps">
+        <article class="step">
+          <span class="step-number">01</span>
+          <h3>患者发起</h3>
+          <p>表达始于患者提供的证据，而不是模型的猜测。</p>
+        </article>
+        <article class="step">
+          <span class="step-number">02</span>
+          <h3>AI 提供候选</h3>
+          <p>AI 可以组织与补全，但不能替患者授权。</p>
+        </article>
+        <article class="step">
+          <span class="step-number">03</span>
+          <h3>患者确认</h3>
+          <p>只有明确确认后，表达才能使用患者的个人声音。</p>
+        </article>
+      </div>
+    </div>
+  </section>
 
-      <a class="link" href="https://github.com/CZA1006/MeantByMe/blob/main/docs/01_PRODUCT_VISION.md">
-        <span class="icon" aria-hidden="true">◎</span>
-        <span><span class="label">产品定义</span><span class="detail">愿景、边界与核心原则</span></span>
-        <span class="arrow" aria-hidden="true">›</span>
-      </a>
-    </nav>
+  <main class="resources" id="resources">
+    <div class="content">
+      <div class="resource-intro">
+        <div>
+          <p class="section-kicker">Project resource hub</p>
+          <h2>了解项目<br>深入阅读</h2>
+        </div>
+        <p>从完整演示到开源代码、研究依据和产品边界，这里汇集了理解与评估 MeantByMe 所需的核心材料。</p>
+      </div>
 
-    <p class="principle">代理可以补全句子，但永远不能替患者决定意思。</p>
-    <footer>MeantByMe · Consent first, always.</footer>
+      <nav class="resource-list" aria-label="项目资料">
+        <a class="resource-link" href="./demo.html">
+          <span class="resource-name">演示视频<small>Demo video</small></span>
+          <span class="resource-detail">在线播放完整产品演示，也可下载 MP4。</span>
+          <span class="resource-action">观看</span>
+        </a>
+        <a class="resource-link" href="https://github.com/CZA1006/MeantByMe">
+          <span class="resource-name">GitHub<small>Code &amp; architecture</small></span>
+          <span class="resource-detail">查看代码、确定性授权架构、开发文档与测试。</span>
+          <span class="resource-action">打开</span>
+        </a>
+        <a class="resource-link" href="https://github.com/CZA1006/MeantByMe/blob/main/docs/12_RESEARCH_REFERENCES.md">
+          <span class="resource-name">相关论文<small>Research</small></span>
+          <span class="resource-detail">阅读研究依据、辅助沟通证据与参考资料。</span>
+          <span class="resource-action">阅读</span>
+        </a>
+        <a class="resource-link" href="./business-plan.html">
+          <span class="resource-name">商业计划书<small>Business plan</small></span>
+          <span class="resource-detail">适合手机阅读，也可下载 DOCX 原文件。</span>
+          <span class="resource-action">阅读</span>
+        </a>
+        <a class="resource-link" href="https://github.com/CZA1006/MeantByMe/blob/main/docs/01_PRODUCT_VISION.md">
+          <span class="resource-name">产品定义<small>Product definition</small></span>
+          <span class="resource-detail">了解产品愿景、能力边界与 consent-first 核心原则。</span>
+          <span class="resource-action">了解</span>
+        </a>
+      </nav>
+
+      <div class="principle">
+        <blockquote>代理可以补全句子，但永远不能替患者决定意思。</blockquote>
+        <p>MeantByMe<br>Consent first, always.</p>
+      </div>
+    </div>
   </main>
+
+  <footer>
+    <div class="content">
+      <span>© 2026 MeantByMe · Completed with AI. Meant by me.</span>
+      <a href="https://github.com/CZA1006/MeantByMe">GitHub repository</a>
+    </div>
+  </footer>
 </body>
 </html>
