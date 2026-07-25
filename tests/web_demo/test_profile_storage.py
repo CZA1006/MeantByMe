@@ -104,6 +104,42 @@ def test_mysql_profile_store_uses_parameterized_queries(
     assert "secret" not in str(queries)
 
 
+def test_mysql_startup_migrates_dynamic_memory_tables_idempotently(
+    monkeypatch,
+) -> None:
+    queries: list[tuple[str, object]] = []
+
+    def fake_connect(_self) -> FakeConnection:
+        return FakeConnection(queries)
+
+    monkeypatch.setattr(MySQLProfileStore, "_connect", fake_connect)
+    MySQLProfileStore(
+        host="mysql.internal",
+        port=3306,
+        user="app",
+        password="secret",
+        database="meantbyme",
+        auto_create_schema=False,
+    )
+
+    statements = [sql for sql, _ in queries]
+    assert "SELECT 1 FROM user_profiles LIMIT 1" in statements
+    assert any(
+        sql.startswith("CREATE TABLE IF NOT EXISTS expression_mappings")
+        for sql in statements
+    )
+    assert any(
+        sql.startswith(
+            "CREATE TABLE IF NOT EXISTS expression_feedback_events"
+        )
+        for sql in statements
+    )
+    assert not any(
+        sql.startswith("CREATE TABLE IF NOT EXISTS user_profiles")
+        for sql in statements
+    )
+
+
 def test_mysql_profile_store_sanitizes_connection_failure(
     monkeypatch,
 ) -> None:

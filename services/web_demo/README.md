@@ -104,6 +104,11 @@ WEB_DEMO_MYSQL_DATABASE=meantbyme
 WEB_DEMO_MYSQL_AUTO_CREATE_SCHEMA=false
 ```
 
+With `WEB_DEMO_MYSQL_AUTO_CREATE_SCHEMA=false`, the base `user_profiles` table
+must already exist. Feature-extension tables are upgraded at startup with
+idempotent `CREATE TABLE IF NOT EXISTS` migrations; this preserves existing
+profile rows while allowing an older deployment to adopt dynamic memory.
+
 Set these variables on `meantbyme-ios`, not on `meantbyme-gateway`. The Zeabur
 MySQL service automatically exposes `MYSQL_HOST`, `MYSQL_PORT`,
 `MYSQL_USERNAME`, `MYSQL_PASSWORD`, and `MYSQL_DATABASE` to other services in

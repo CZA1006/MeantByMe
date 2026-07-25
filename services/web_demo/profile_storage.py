@@ -445,16 +445,19 @@ class MySQLProfileStore:
             with connection.cursor() as cursor:
                 if self._auto_create_schema:
                     cursor.execute(MYSQL_SCHEMA)
-                    cursor.execute(MYSQL_EXPRESSION_MAPPING_SCHEMA)
-                    cursor.execute(MYSQL_FEEDBACK_EVENT_SCHEMA)
                 else:
                     cursor.execute("SELECT 1 FROM user_profiles LIMIT 1")
-                    cursor.execute(
-                        "SELECT 1 FROM expression_mappings LIMIT 1"
-                    )
-                    cursor.execute(
-                        "SELECT 1 FROM expression_feedback_events LIMIT 1"
-                    )
+                # Feature tables are forward-compatible application migrations.
+                # CREATE IF NOT EXISTS upgrades an older deployment without
+                # changing or deleting existing profile data.
+                cursor.execute(MYSQL_EXPRESSION_MAPPING_SCHEMA)
+                cursor.execute(MYSQL_FEEDBACK_EVENT_SCHEMA)
+                cursor.execute(
+                    "SELECT 1 FROM expression_mappings LIMIT 1"
+                )
+                cursor.execute(
+                    "SELECT 1 FROM expression_feedback_events LIMIT 1"
+                )
 
     def list_profiles(self) -> list[StoredProfile]:
         with self._connection_scope() as connection:

@@ -83,7 +83,7 @@ Last updated: 2026-07-25. Active implementation branch: `feature/earPhones`.
 - ⬜ Remote persistence / backup, production reliability
 
 ## Evaluation & testing
-- ✅ pytest: **166 passing** (unit / safety / integration / gateway / web demo / eval); mock+fallback golden paths green, UAR 0
+- ✅ pytest: **167 passing** (unit / safety / integration / gateway / web demo / eval); mock+fallback golden paths green, UAR 0
 - ✅ **Live public deployment verified (2026-07-24):** gateway `meantbyme.zeabur.app` (health 200, auth-gated — no/wrong token → 401, correct token → real `step-explore` candidates with situation+memory disambiguation) and web demo `meantbyme-demo.zeabur.app` (cloud mode, access-gated — session create without `WEB_DEMO_TOKEN` → 401)
 - ✅ Eval harness **spec** ([EVAL_HARNESS.md](EVAL_HARNESS.md)) + **implementation** (`src/meantbyme/eval`) with `mock` / `replay` / `cloud` modes, hard gates, high-risk redaction
 - ✅ 26-sample EN/ZH dataset with paired situational samples (`demo/eval/dataset.jsonl`)
