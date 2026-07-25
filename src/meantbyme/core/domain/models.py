@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class DomainModel(BaseModel):
@@ -28,6 +28,7 @@ class SessionStage(StrEnum):
     SPOKEN = "spoken"
     MEMORY_UPDATED = "memory_updated"
     COMPLETED = "completed"
+    EXPRESSION_CANCELLED = "expression_cancelled"
     STOPPED = "stopped"
 
 
@@ -74,6 +75,7 @@ class PatientCommandType(StrEnum):
     PLAYBACK_FAILED = "playback_failed"
     EDIT_COMPLETION = "edit_completion"
     GO_BACK = "go_back"
+    CANCEL_EXPRESSION = "cancel_expression"
     STOP = "stop"
     SWITCH_INPUT_METHOD = "switch_input_method"
     REQUEST_HELP = "request_help"
@@ -88,6 +90,13 @@ class MemoryType(StrEnum):
 
 
 class VerificationLevel(StrEnum):
+    """Legacy storage values mapped to two product trust states.
+
+    GOLD and SILVER remain readable for existing profile bundles, but both are
+    treated as trusted. UNVERIFIED is the only state excluded from persistent
+    personalization.
+    """
+
     GOLD = "gold"
     SILVER = "silver"
     UNVERIFIED = "unverified"
@@ -103,6 +112,26 @@ class UncertaintyBand(StrEnum):
     LOW = "low_uncertainty"
     MEDIUM = "medium_uncertainty"
     HIGH = "high_uncertainty"
+
+
+class QARole(StrEnum):
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
+class QAStatus(StrEnum):
+    SUCCESS = "success"
+    FALLBACK = "fallback"
+
+
+class QAEventType(StrEnum):
+    SESSION_STARTED = "QA_SESSION_STARTED"
+    EVIDENCE_EXTRACTED = "QA_EVIDENCE_EXTRACTED"
+    QUESTION_INTERPRETED = "QA_QUESTION_INTERPRETED"
+    ANSWER_GENERATED = "QA_ANSWER_GENERATED"
+    CLARIFICATION_REQUESTED = "QA_CLARIFICATION_REQUESTED"
+    TURN_CANCELLED = "QA_TURN_CANCELLED"
+    SESSION_STOPPED = "QA_SESSION_STOPPED"
 
 
 class RuntimeEventType(StrEnum):
@@ -131,6 +160,7 @@ class RuntimeEventType(StrEnum):
     VERIFIED_MEMORY_WRITTEN = "VERIFIED_MEMORY_WRITTEN"
     MEMORY_WRITE_FAILED = "MEMORY_WRITE_FAILED"
     SESSION_COMPLETED = "SESSION_COMPLETED"
+    EXPRESSION_CANCELLED = "EXPRESSION_CANCELLED"
     SESSION_STOPPED = "SESSION_STOPPED"
     COMMAND_REJECTED = "COMMAND_REJECTED"
     INPUT_METHOD_SWITCH_REQUESTED = "INPUT_METHOD_SWITCH_REQUESTED"
@@ -170,6 +200,21 @@ class MemoryItem(DomainModel):
     confirmation_session_id: str | None = None
 
 
+class ExpressionMapping(DomainModel):
+    mapping_id: str
+    patient_id: str
+    profile_ref: str
+    input_text: str
+    intent_text: str
+    language: str
+    embedding: list[float]
+    confidence: float = Field(ge=0, le=1)
+    positive_count: int = Field(default=0, ge=0)
+    negative_count: int = Field(default=0, ge=0)
+    last_session_id: str
+    updated_at: datetime
+
+
 class ExpressionCandidate(DomainModel):
     id: str
     text: str
@@ -198,6 +243,79 @@ class CommandInterpretation(DomainModel):
     status: Literal["success", "failed", "timeout"] = "success"
     confidence: float | None = Field(default=None, ge=0, le=1)
     error: str | None = None
+
+
+class QAConversationTurn(DomainModel):
+    turn_id: str = Field(min_length=1, max_length=128)
+    role: QARole
+    content: str = Field(min_length=1, max_length=2_000)
+    source: Literal["ai_interpreted_patient_question", "ai_response"]
+    patient_supported_spans: list[str] = Field(
+        default_factory=list, max_length=40
+    )
+    ai_added_spans: list[str] = Field(default_factory=list, max_length=40)
+
+    @model_validator(mode="after")
+    def validate_role_source(self) -> "QAConversationTurn":
+        expected = (
+            "ai_interpreted_patient_question"
+            if self.role is QARole.USER
+            else "ai_response"
+        )
+        if self.source != expected:
+            raise ValueError("QA turn source does not match its role")
+        return self
+
+
+class QAResponse(DomainModel):
+    understood_question: str = Field(min_length=1, max_length=1_000)
+    patient_supported_spans: list[str] = Field(max_length=40)
+    ai_added_spans: list[str] = Field(max_length=40)
+    uncertainty: UncertaintyBand
+    should_clarify: bool
+    clarification_question: str | None = Field(
+        default=None, max_length=500
+    )
+    answer: str | None = Field(default=None, max_length=1_000)
+    risk_level: RiskLevel = RiskLevel.ORDINARY
+    status: QAStatus = QAStatus.SUCCESS
+    error: str | None = Field(default=None, max_length=120)
+
+    @model_validator(mode="after")
+    def validate_response_path(self) -> "QAResponse":
+        if self.should_clarify:
+            if not self.clarification_question:
+                raise ValueError(
+                    "clarification_question is required when clarifying"
+                )
+            if self.answer is not None:
+                raise ValueError(
+                    "answer must be absent while requesting clarification"
+                )
+        else:
+            if not self.answer:
+                raise ValueError("answer is required for a direct response")
+            if self.clarification_question is not None:
+                raise ValueError(
+                    "clarification_question requires should_clarify"
+                )
+        return self
+
+    def spoken_text(self) -> str:
+        if self.should_clarify:
+            assert self.clarification_question is not None
+            return self.clarification_question
+        assert self.answer is not None
+        return self.answer
+
+
+class QAEvent(DomainModel):
+    event_id: str
+    event_type: QAEventType
+    session_id: str
+    patient_id: str
+    timestamp: datetime
+    payload: dict[str, Any] = Field(default_factory=dict)
 
 
 class ConfirmedContext(DomainModel):

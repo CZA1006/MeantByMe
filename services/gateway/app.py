@@ -12,6 +12,7 @@ from typing import Any, Literal
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
+from meantbyme.core.domain import QAConversationTurn
 from services.gateway.config import GatewaySettings
 from services.gateway.providers import (
     CloudProviderService,
@@ -72,6 +73,18 @@ class CommandInterpretRequest(GatewayModel):
     transcript: str = Field(min_length=1, max_length=120)
     stage: str = Field(min_length=1, max_length=64)
     language: str | None = Field(default=None, max_length=12)
+
+
+class QARequest(GatewayModel):
+    patient_id: str = Field(min_length=1)
+    session_id: str = Field(min_length=1)
+    language: str | None = Field(default=None, max_length=12)
+    situation: str | None = Field(default=None, max_length=10_000)
+    evidence: dict[str, Any]
+    history: list[QAConversationTurn] = Field(
+        default_factory=list, max_length=12
+    )
+    memories: list[dict[str, Any]] = Field(default_factory=list, max_length=12)
 
 
 def create_app(
@@ -215,6 +228,16 @@ def create_app(
             transcript=payload.transcript,
             stage=payload.stage,
             language=payload.language,
+        )
+
+    @application.post(
+        "/v1/qa/respond",
+        dependencies=[Depends(require_caller)],
+    )
+    async def qa_respond(payload: QARequest) -> dict[str, Any]:
+        return await run_provider(
+            active_providers.respond_qa,
+            payload.model_dump(mode="json"),
         )
 
     @application.post(

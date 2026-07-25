@@ -41,12 +41,12 @@ Each memory must also carry `simulated: true`, `source`,
 
 ## Provenance rules
 
-- Gold requires `source: "patient"` and a `confirmation_session_id`.
-- Caregiver observations require `verification_level: "silver"`.
+- Explicit profile input is Trusted regardless of operator role.
+- Legacy Gold/Silver values remain parseable but have equal retrieval weight.
 - Research assumptions use `verification_level: "unverified"` and
   `prompt_eligible: false`; the importer does not seed them.
 - The expected expression belongs in an evaluator-only sidecar, not the
-  profile. Including it as Gold changes the test into known-phrase recall.
+  profile. Including it as Trusted changes the test into known-phrase recall.
 - Context retrieval is patient-scoped, token-relevant, and limited to five
   rows before the situation is composed.
 
@@ -73,11 +73,10 @@ false.
 ## iOS user profiles
 
 The iOS app can also create a non-simulated profile through guided questions.
-Those answers are caregiver-entered evidence, so every generated memory is
-stored as Silver caregiver context. A non-simulated Markdown import is likewise
-demoted to Silver on the server; a file cannot grant itself Gold provenance by
-claiming a confirmation ID. Simulated test bundles retain their declared
-provenance for controlled evaluation.
+Those answers are explicit user input, so every generated memory is stored as
+Trusted context. A non-simulated Markdown import is also trusted for
+personalization; a file still cannot grant itself personal-voice authority.
+Simulated test bundles retain legacy values for controlled compatibility tests.
 
 Production profile data uses MySQL when
 `WEB_DEMO_PROFILE_DB_BACKEND=mysql`. Configure the `WEB_DEMO_MYSQL_*`

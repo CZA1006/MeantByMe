@@ -39,7 +39,7 @@ class RecordingIntent(MockIntentAdapter):
         )
 
 
-def test_profile_plus_rich_single_asr_retrieves_only_relevant_context() -> None:
+def test_profile_plus_rich_single_asr_sends_current_user_profile() -> None:
     profile = load_profile_bundle(
         ROOT / "demo/profiles/lin_yue_demo.md"
     )
@@ -85,10 +85,12 @@ def test_profile_plus_rich_single_asr_retrieves_only_relevant_context() -> None:
 
     assert runtime.session.situation is not None
     assert "building MeantByMe" in runtime.session.situation
-    assert "Wednesday is normally reserved for treatment" not in (
+    assert "Wednesday is normally reserved for treatment" in (
         runtime.session.situation
     )
-    assert "husband reports" not in runtime.session.situation
+    assert "Speech becomes harder when she is tired." in (
+        runtime.session.situation
+    )
 
     send(runtime, PatientCommandType.CONFIRM_HEARD_CONTENT)
 

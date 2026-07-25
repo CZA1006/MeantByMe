@@ -14,9 +14,15 @@ from meantbyme.core.domain import (
     CommandIntent,
     CommandInterpretation,
     IntentProposal,
+    QAResponse,
+    QAStatus,
 )
 from services.gateway.config import GatewaySettings
-from services.gateway.prompts import COMMAND_SYSTEM_PROMPT, INTENT_SYSTEM_PROMPT
+from services.gateway.prompts import (
+    COMMAND_SYSTEM_PROMPT,
+    INTENT_SYSTEM_PROMPT,
+    QA_SYSTEM_PROMPT,
+)
 from services.gateway.provider_http import (
     ProviderHttpClient,
     ProviderRequestError,
@@ -192,6 +198,71 @@ class CloudProviderService:
             ) from error
         return interpretation.model_dump(mode="json")
 
+    def respond_qa(
+        self, request_payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        messages: list[dict[str, str]] = []
+        for turn in request_payload.get("history", [])[-12:]:
+            if turn.get("role") == "user":
+                content = json.dumps(
+                    {
+                        "kind": "unverified_interpreted_patient_question",
+                        "content": turn.get("content"),
+                        "patient_supported_spans": turn.get(
+                            "patient_supported_spans", []
+                        ),
+                        "ai_added_spans": turn.get("ai_added_spans", []),
+                    },
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                )
+                messages.append({"role": "user", "content": content})
+            elif turn.get("role") == "assistant":
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": str(turn.get("content", "")),
+                    }
+                )
+        messages.append(
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "kind": "current_unverified_question_evidence",
+                        "evidence": request_payload["evidence"],
+                        "memories": request_payload.get("memories", []),
+                        "language": request_payload.get("language"),
+                        "situation": request_payload.get("situation"),
+                    },
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ),
+            }
+        )
+        if self.settings.intent_provider == "stepfun":
+            text = self._stepfun_messages(
+                messages, system_prompt=QA_SYSTEM_PROMPT
+            )
+        else:
+            text = self._openagents_messages(
+                messages, system_prompt=QA_SYSTEM_PROMPT
+            )
+        payload = _extract_json_text(text)
+        try:
+            response = QAResponse.model_validate(payload)
+        except ValidationError as error:
+            raise ProviderContractError(
+                "QA response failed domain validation",
+                code="qa_domain_validation_failed",
+            ) from error
+        if response.status is not QAStatus.SUCCESS:
+            raise ProviderContractError(
+                "QA provider returned a non-success status",
+                code="qa_status_contract_failed",
+            )
+        return response.model_dump(mode="json")
+
     def synthesize(
         self,
         *,
@@ -289,6 +360,17 @@ class CloudProviderService:
         *,
         system_prompt: str = INTENT_SYSTEM_PROMPT,
     ) -> str:
+        return self._openagents_messages(
+            [{"role": "user", "content": user_content}],
+            system_prompt=system_prompt,
+        )
+
+    def _openagents_messages(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        system_prompt: str,
+    ) -> str:
         self._require_secret(self.settings.openagents_api_key, "OpenAgents")
         response = self._client.post_json(
             f"{self.settings.openagents_base_url}/chat/completions",
@@ -296,7 +378,7 @@ class CloudProviderService:
                 "model": self.settings.intent_model,
                 "messages": [
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_content},
+                    *messages,
                 ],
                 "temperature": 0,
                 "response_format": {"type": "json_object"},
@@ -323,6 +405,17 @@ class CloudProviderService:
         *,
         system_prompt: str = INTENT_SYSTEM_PROMPT,
     ) -> str:
+        return self._stepfun_messages(
+            [{"role": "user", "content": user_content}],
+            system_prompt=system_prompt,
+        )
+
+    def _stepfun_messages(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        system_prompt: str,
+    ) -> str:
         self._require_secret(self.settings.stepfun_api_key, "StepFun")
         response = self._client.post_json(
             f"{self.settings.stepfun_base_url}/messages",
@@ -330,7 +423,7 @@ class CloudProviderService:
                 "model": self.settings.intent_model,
                 "max_tokens": 2_048,
                 "system": system_prompt,
-                "messages": [{"role": "user", "content": user_content}],
+                "messages": messages,
             },
             headers={
                 "x-api-key": self.settings.stepfun_api_key,

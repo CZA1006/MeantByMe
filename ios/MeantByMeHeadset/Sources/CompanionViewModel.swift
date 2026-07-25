@@ -10,6 +10,7 @@ final class CompanionViewModel: ObservableObject {
     @Published private(set) var expressionElapsedSeconds = 0
     @Published private(set) var expressionTimerActive = false
     @Published private(set) var expressionTimerVisible = false
+    @Published private(set) var expressionCancellationInProgress = false
     @Published var speakerVolumeTestPresented = false
     @Published var userSettingsPresented = false
     @Published private(set) var profiles: [UserProfileSummary] = []
@@ -24,12 +25,14 @@ final class CompanionViewModel: ObservableObject {
     private let audioRouter = AudioRouter()
     private var gateway: GatewayClient?
     private var response: DemoResponse?
+    private var qaResponse: QASessionResponse?
     private var silenceTask: Task<Void, Never>?
     private var expressionTimerTask: Task<Void, Never>?
     private var captureProcessingTask: Task<Void, Never>?
     private var safetyAbortInProgress = false
     private var captureBoundaryReached = false
     private var activeSessionID: String?
+    private var activeQATurnID: String?
     private var stoppedSessionRecoveryAttempted = false
     private var currentCandidate: Candidate?
     private var privateReadbackCompleted = false
@@ -41,6 +44,33 @@ final class CompanionViewModel: ObservableObject {
     var headsetConnected: Bool { headset.connected }
     var headsetStatus: String { headset.status }
     var canEditCurrentUser: Bool { !sessionStarted }
+    var canCancelCurrentExpression: Bool {
+        sessionStarted
+            && activeSessionID != nil
+            && !safetyAbortInProgress
+            && !expressionCancellationInProgress
+    }
+    var currentRoundLabel: String {
+        mode == .qa ? "本次提问" : "本次表达"
+    }
+    var cancelActionLabel: String {
+        if expressionCancellationInProgress {
+            return mode == .qa
+                ? "正在结束本次提问…" : "正在结束本次表达…"
+        }
+        return mode == .qa ? "结束本次提问" : "结束本次表达"
+    }
+    var activeGuidance: String {
+        if mode == .qa {
+            return "持续陪伴中。停顿 5 秒后，AI 会补全问题并直接在耳机中回答。"
+        }
+        return "持续陪伴中。停顿 5 秒后自动补全；说“是/嗯”确认，说“不是/不对”更换。"
+    }
+    var cancelGuidance: String {
+        mode == .qa
+            ? "只放弃当前问题及其临时上下文，随后会自动继续聆听。"
+            : "只放弃当前这句话，随后会自动继续聆听。"
+    }
 
     init() {
         let defaults = UserDefaults.standard
@@ -199,15 +229,17 @@ final class CompanionViewModel: ObservableObject {
     func startCompanion() async {
         guard gateway != nil, headset.connected else { return }
         guard !sessionStarted, !safetyAbortInProgress else { return }
-        guard mode == .expression else {
-            errorMessage = "问答模式尚未接入；本版本先实现“替患者表达”。"
-            return
-        }
         endSpeakerVolumeTest()
         sessionStarted = true
-        safetyStatus = "候选仅在耳机播放；语音确认后以中性音外放"
+        safetyStatus = mode == .qa
+            ? "AI 回答仅在耳机播放，并始终使用系统中性音"
+            : "候选仅在耳机播放；语音确认后以中性音外放"
         do {
-            try await beginNextExpressionRound()
+            if mode == .qa {
+                try await beginQAConversation()
+            } else {
+                try await beginNextExpressionRound()
+            }
         } catch {
             fail(error)
         }
@@ -223,18 +255,177 @@ final class CompanionViewModel: ObservableObject {
         activeSessionID = nil
         sessionStatus = "正在结束陪伴并丢弃未完成的表达…"
         audioRouter.stop()
-        headset.stopCapture()
+        await withCheckedContinuation { continuation in
+            headset.discardCurrentCapture {
+                continuation.resume()
+            }
+        }
         if let gateway, let sessionIDToStop {
-            _ = try? await gateway.command(
-                "stop",
-                expectedSessionID: sessionIDToStop
-            )
+            if mode == .qa {
+                _ = try? await gateway.stopQASession(
+                    expectedSessionID: sessionIDToStop
+                )
+            } else {
+                _ = try? await gateway.command(
+                    "stop",
+                    expectedSessionID: sessionIDToStop
+                )
+            }
         }
         sessionStarted = false
         safetyAbortInProgress = false
         resetRoundState()
         sessionStatus = "陪伴已结束"
         safetyStatus = "仅使用系统中性音"
+    }
+
+    func cancelCurrentExpression() async {
+        if mode == .qa {
+            await cancelCurrentQuestion()
+            return
+        }
+        guard
+            let gateway,
+            let sessionIDToCancel = activeSessionID,
+            canCancelCurrentExpression
+        else {
+            return
+        }
+
+        expressionCancellationInProgress = true
+        silenceTask?.cancel()
+        stopExpressionTimer(reset: true)
+        captureProcessingTask?.cancel()
+        captureProcessingTask = nil
+        activeSessionID = nil
+        audioRouter.stop()
+        resetRoundState()
+        sessionStatus = "正在丢弃本次表达…"
+        safetyStatus = "本次内容不会外放，也不会写入确认记忆"
+
+        await withCheckedContinuation { continuation in
+            headset.discardCurrentCapture {
+                continuation.resume()
+            }
+        }
+
+        guard sessionStarted, !safetyAbortInProgress else {
+            expressionCancellationInProgress = false
+            return
+        }
+
+        do {
+            var cancellationAccepted = true
+            do {
+                _ = try await gateway.command(
+                    "cancel_expression",
+                    expectedSessionID: sessionIDToCancel
+                )
+            } catch let error as GatewayClientError
+                where isFinishedExpressionConflict(error) {
+                // Playback may have completed at the same instant the button
+                // was pressed. There is then nothing left to cancel, but the
+                // companion should still advance to a fresh round.
+                cancellationAccepted = false
+            }
+            guard sessionStarted, !safetyAbortInProgress else {
+                expressionCancellationInProgress = false
+                return
+            }
+            try await beginNextExpressionRound()
+            sessionStatus = cancellationAccepted
+                ? "已结束上一条表达，正在等待患者重新说"
+                : "上一轮已经结束，正在等待患者重新说"
+            safetyStatus = cancellationAccepted
+                ? "上一条内容已丢弃；仅使用系统中性音"
+                : "未新增确认或记忆；仅使用系统中性音"
+        } catch {
+            expressionCancellationInProgress = false
+            guard sessionStarted, !safetyAbortInProgress else { return }
+            fail(error)
+            return
+        }
+        expressionCancellationInProgress = false
+    }
+
+    private func cancelCurrentQuestion() async {
+        guard
+            let gateway,
+            let sessionID = activeSessionID,
+            canCancelCurrentExpression
+        else {
+            return
+        }
+        let turnID = activeQATurnID
+        expressionCancellationInProgress = true
+        silenceTask?.cancel()
+        stopExpressionTimer(reset: true)
+        captureProcessingTask?.cancel()
+        captureProcessingTask = nil
+        audioRouter.stop()
+        activeQATurnID = nil
+        captureBoundaryReached = false
+        sessionStatus = "正在丢弃本次提问…"
+        safetyStatus = "本轮不会进入后续对话上下文"
+
+        await withCheckedContinuation { continuation in
+            headset.discardCurrentCapture {
+                continuation.resume()
+            }
+        }
+        if let turnID {
+            _ = try? await gateway.cancelQATurn(
+                turnID: turnID,
+                expectedSessionID: sessionID
+            )
+        }
+        guard
+            sessionStarted,
+            !safetyAbortInProgress,
+            activeSessionID == sessionID
+        else {
+            expressionCancellationInProgress = false
+            return
+        }
+        beginNextQuestionCapture()
+        sessionStatus = "已结束上一轮提问，正在等待患者重新提问"
+        safetyStatus = "上一轮已丢弃；AI 回答仅在耳机使用中性音"
+        expressionCancellationInProgress = false
+    }
+
+    private func beginQAConversation() async throws {
+        guard let gateway, sessionStarted, !safetyAbortInProgress else {
+            return
+        }
+        silenceTask?.cancel()
+        stopExpressionTimer(reset: true)
+        captureProcessingTask?.cancel()
+        resetRoundState()
+        activeQATurnID = nil
+        activeSessionID = nil
+        let created = try await gateway.createQASession(
+            language: selectedProfileLanguage,
+            profileRef: selectedProfileRef
+        )
+        qaResponse = created
+        activeSessionID = created.sessionId
+        beginNextQuestionCapture()
+    }
+
+    private func beginNextQuestionCapture() {
+        guard
+            sessionStarted,
+            !safetyAbortInProgress,
+            let sessionID = activeSessionID
+        else {
+            return
+        }
+        silenceTask?.cancel()
+        stopExpressionTimer(reset: true)
+        captureBoundaryReached = false
+        activeQATurnID = UUID().uuidString
+        sessionStatus = "正在持续聆听；停顿 5 秒后 AI 将直接回答"
+        headset.startCapture(.question, sessionID: sessionID)
     }
 
     private func beginNextExpressionRound() async throws {
@@ -254,7 +445,7 @@ final class CompanionViewModel: ObservableObject {
         activeSessionID = created.session.sessionId
         stoppedSessionRecoveryAttempted = false
         response = try await gateway.command("start_capture")
-        sessionStatus = "正在持续聆听；停顿 8 秒后自动理解本次表达"
+        sessionStatus = "正在持续聆听；停顿 5 秒后自动理解本次表达"
         captureBoundaryReached = false
         headset.startCapture(
             .expression,
@@ -275,8 +466,12 @@ final class CompanionViewModel: ObservableObject {
         switch purpose {
         case .expression:
             startExpressionTimerIfNeeded()
-            delay = 8_000_000_000
-            sessionStatus = "检测到患者说话；继续说话会重新计算 8 秒"
+            delay = 5_000_000_000
+            sessionStatus = "检测到患者说话；继续说话会重新计算 5 秒"
+        case .question:
+            startExpressionTimerIfNeeded()
+            delay = 5_000_000_000
+            sessionStatus = "检测到患者提问；继续说话会重新计算 5 秒"
         case .command:
             delay = 1_200_000_000
             sessionStatus = "正在聆听患者的确认或否定…"
@@ -285,12 +480,17 @@ final class CompanionViewModel: ObservableObject {
             try? await Task.sleep(nanoseconds: delay)
             guard !Task.isCancelled else { return }
             captureBoundaryReached = true
-            if purpose == .expression {
+            if purpose == .expression || purpose == .question {
                 stopExpressionTimer(reset: false)
             }
-            sessionStatus = purpose == .expression
-                ? "已静默 8 秒，正在结束本次表达…"
-                : "正在理解患者的语音回应…"
+            switch purpose {
+            case .expression:
+                sessionStatus = "已静默 5 秒，正在结束本次表达…"
+            case .question:
+                sessionStatus = "已静默 5 秒，正在理解并回答问题…"
+            case .command:
+                sessionStatus = "正在理解患者的语音回应…"
+            }
             headset.stopCapture()
         }
     }
@@ -299,7 +499,7 @@ final class CompanionViewModel: ObservableObject {
         guard !Task.isCancelled else { return }
         guard sessionStarted, !safetyAbortInProgress else { return }
         guard capture.sessionID == activeSessionID else { return }
-        if capture.purpose == .expression {
+        if capture.purpose == .expression || capture.purpose == .question {
             stopExpressionTimer(reset: false)
         }
         guard !capture.pcm.isEmpty else {
@@ -313,6 +513,12 @@ final class CompanionViewModel: ObservableObject {
                 try await submitExpressionCapture(
                     wav: wav,
                     primaryTranscript: capture.primaryTranscript
+                )
+            case .question:
+                try await submitQuestionCapture(
+                    wav: wav,
+                    primaryTranscript: capture.primaryTranscript,
+                    sessionID: capture.sessionID
                 )
             case .command:
                 try await submitVoiceCommand(
@@ -330,6 +536,70 @@ final class CompanionViewModel: ObservableObject {
                 return
             }
             fail(error)
+        }
+    }
+
+    private func submitQuestionCapture(
+        wav: Data,
+        primaryTranscript: String,
+        sessionID: String
+    ) async throws {
+        guard
+            let gateway,
+            let turnID = activeQATurnID,
+            activeSessionID == sessionID
+        else {
+            return
+        }
+        sessionStatus = "正在补全问题并生成回答…"
+        let result = try await gateway.askAI(
+            wav: wav,
+            primaryTranscript: primaryTranscript,
+            turnID: turnID,
+            expectedSessionID: sessionID
+        )
+        try Task.checkCancellation()
+        guard
+            sessionStarted,
+            !safetyAbortInProgress,
+            activeSessionID == sessionID,
+            activeQATurnID == turnID
+        else {
+            return
+        }
+        qaResponse = result
+        guard let answer = result.response else {
+            throw GatewayClientError.invalidResponse
+        }
+        guard result.audioAvailable else {
+            sessionStatus = "AI 已生成文字回答，但耳机语音生成失败"
+            throw GatewayClientError.invalidResponse
+        }
+        let audio = try await gateway.qaAudio(
+            turnID: turnID,
+            expectedSessionID: sessionID
+        )
+        sessionStatus = answer.shouldClarify
+            ? "问题含义不够明确，AI 正在耳机中追问…"
+            : "AI 正在耳机中回答…"
+        safetyStatus = "这是 AI 的回答，不代表患者对外表达；不写入确认记忆"
+        try audioRouter.playPrivateAudio(audio) { [weak self] success in
+            Task { @MainActor in
+                guard let self else { return }
+                guard
+                    success,
+                    self.sessionStarted,
+                    self.activeSessionID == sessionID,
+                    self.activeQATurnID == turnID
+                else {
+                    if !success {
+                        self.fail(AudioRouterError.earbudsNotActive)
+                    }
+                    return
+                }
+                self.activeQATurnID = nil
+                self.beginNextQuestionCapture()
+            }
         }
     }
 
@@ -648,6 +918,11 @@ final class CompanionViewModel: ObservableObject {
             sessionStatus = "没有收到有效表达，继续等待患者说话。"
             captureBoundaryReached = false
             headset.startCapture(.expression, sessionID: sessionID)
+        case .question:
+            stopExpressionTimer(reset: true)
+            sessionStatus = "没有收到有效问题，继续等待患者提问。"
+            captureBoundaryReached = false
+            headset.startCapture(.question, sessionID: sessionID)
         case .command:
             sessionStatus = "没有收到确认语音，请再说一次。"
             captureBoundaryReached = false
@@ -674,8 +949,22 @@ final class CompanionViewModel: ObservableObject {
         return false
     }
 
+    private func isFinishedExpressionConflict(
+        _ error: GatewayClientError
+    ) -> Bool {
+        if case let .server(code, message) = error {
+            return code == 409
+                && message.localizedCaseInsensitiveContains(
+                    "unspoken active expression"
+                )
+        }
+        return false
+    }
+
     private func resetRoundState() {
         response = nil
+        qaResponse = nil
+        activeQATurnID = nil
         currentCandidate = nil
         privateReadbackCompleted = false
         additionalVoiceConfirmationRequired = false
@@ -735,14 +1024,21 @@ final class CompanionViewModel: ObservableObject {
         captureProcessingTask?.cancel()
         activeSessionID = nil
         audioRouter.stop()
+        headset.discardCurrentCapture {}
         sessionStatus = "\(reason)，正在安全停止陪伴"
         safetyStatus = "未执行新的确认、外放或记忆写入"
         Task {
             if let gateway, let sessionIDToStop {
-                _ = try? await gateway.command(
-                    "stop",
-                    expectedSessionID: sessionIDToStop
-                )
+                if self.mode == .qa {
+                    _ = try? await gateway.stopQASession(
+                        expectedSessionID: sessionIDToStop
+                    )
+                } else {
+                    _ = try? await gateway.command(
+                        "stop",
+                        expectedSessionID: sessionIDToStop
+                    )
+                }
             }
             sessionStarted = false
             safetyAbortInProgress = false

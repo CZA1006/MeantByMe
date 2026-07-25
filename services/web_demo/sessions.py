@@ -27,6 +27,7 @@ from meantbyme.adapters.profile import (
     ProfileImportResult,
     seed_profile_repository,
 )
+from meantbyme.adapters.qa import GatewayQAAdapter, MockQAAdapter
 from meantbyme.adapters.storage import SQLiteRepository
 from meantbyme.adapters.tts import CachedTTSAdapter, GatewayTTSAdapter
 from meantbyme.core.domain import (
@@ -34,10 +35,14 @@ from meantbyme.core.domain import (
     CommandIntent,
     ExpressionCandidate,
     PatientCommand,
+    PatientCommandType,
+    QAResponse,
+    QARole,
     RuntimeEventType,
     TTSResult,
 )
-from meantbyme.core.ports import ASRPort, CommandIntentPort, TTSPort
+from meantbyme.core.ports import ASRPort, CommandIntentPort, QAPort, TTSPort
+from meantbyme.core.qa import QARuntime, QARuntimeError
 from meantbyme.core.runtime import CommandRejected, MeantByMeRuntime
 
 from services.web_demo.config import WebDemoSettings
@@ -77,6 +82,15 @@ class CapturingTTSAdapter:
         self.neutral_result = result
         return result
 
+    def synthesize_neutral_text(
+        self, text: str, *, language: str | None
+    ) -> TTSResult:
+        result = self._delegate.synthesize_neutral_text(
+            text, language=language
+        )
+        self.neutral_result = result
+        return result
+
     def synthesize_personal(
         self, expression: AuthorizedExpression
     ) -> TTSResult:
@@ -97,6 +111,8 @@ class DemoSession:
     storage_root: Path
     profile: ProfileBundle
     profile_import: ProfileImportResult
+    profile_ref: str
+    profile_registry: DemoProfileRegistry
     access_token: str = field(default_factory=lambda: token_urlsafe(32))
     pending_audio_id: str | None = None
     fixture_audio_id: str = "david_fragment_001"
@@ -104,6 +120,7 @@ class DemoSession:
     voice_interpretations: dict[str, VoiceInterpretationRecord] = field(
         default_factory=dict
     )
+    memory_feedback_status: str | None = None
 
     def close(self) -> None:
         self.repository.close()
@@ -313,6 +330,7 @@ class DemoSession:
                 update={"payload": trusted_payload}
             )
             self.runtime.handle(trusted_command)
+            self._record_expression_feedback(candidate, confirmed=True)
             for interpretation_id in raw_ids:
                 self.voice_interpretations.pop(interpretation_id, None)
             return self.response()
@@ -326,8 +344,72 @@ class DemoSession:
 
     def handle(self, command: PatientCommand) -> dict[str, Any]:
         with self.lock:
+            feedback_candidates = self._feedback_candidates(command.command)
             self.runtime.handle(command)
+            confirmed = command.command is PatientCommandType.FINAL_CONFIRM
+            for candidate in feedback_candidates:
+                self._record_expression_feedback(
+                    candidate,
+                    confirmed=confirmed,
+                )
+            if command.command is PatientCommandType.CANCEL_EXPRESSION:
+                if self.pending_audio_id is not None:
+                    self.audio_store.delete(self.pending_audio_id)
+                self.pending_audio_id = None
+                self.voice_interpretations.clear()
             return self.response()
+
+    def _feedback_candidates(
+        self,
+        command: PatientCommandType,
+    ) -> list[ExpressionCandidate]:
+        selected = self.runtime.session.selected_candidate()
+        if command is PatientCommandType.FINAL_CONFIRM:
+            return [selected] if selected is not None else []
+        if command is PatientCommandType.NONE_OF_THESE:
+            return list(self.runtime.session.candidates)
+        if command in {
+            PatientCommandType.REJECT_CURRENT_CANDIDATE,
+            PatientCommandType.EDIT_COMPLETION,
+        }:
+            return [selected] if selected is not None else []
+        return []
+
+    def _record_expression_feedback(
+        self,
+        candidate: ExpressionCandidate,
+        *,
+        confirmed: bool,
+    ) -> None:
+        evidence = self.runtime.session.evidence
+        if evidence is None:
+            return
+        fragments = [
+            *evidence.stable_fragments,
+            *evidence.uncertain_fragments,
+        ]
+        input_text = " ".join(
+            fragment.strip() for fragment in fragments if fragment.strip()
+        )
+        if not input_text:
+            return
+        try:
+            self.profile_registry.record_expression_feedback(
+                # Final confirmation and rejection already express the user's
+                # choice, so memory learning must not require another click.
+                profile_ref=self.profile_ref,
+                session_id=self.runtime.session.session_id,
+                input_text=input_text,
+                intent_text=candidate.text,
+                language=candidate.language,
+                confirmed=confirmed,
+            )
+        except Exception:
+            self.memory_feedback_status = "failed"
+        else:
+            self.memory_feedback_status = (
+                "positive_recorded" if confirmed else "negative_recorded"
+            )
 
     def response(self) -> dict[str, Any]:
         session = self.runtime.session
@@ -359,6 +441,10 @@ class DemoSession:
                 "skipped_count": len(
                     self.profile_import.skipped_memory_ids
                 ),
+            },
+            "dynamic_memory": {
+                "feedback_status": self.memory_feedback_status,
+                "requires_extra_confirmation": False,
             },
             "session": view_payload,
             "selected_candidate_id": session.selected_candidate_id,
@@ -394,10 +480,130 @@ class DemoSession:
         return None
 
 
+@dataclass
+class QADemoSession:
+    runtime: QARuntime
+    repository: SQLiteRepository
+    audio_store: AudioStore
+    tts: CapturingTTSAdapter
+    asr: HeadsetPrimaryASRAdapter
+    mode: str
+    storage_root: Path
+    profile: ProfileBundle
+    profile_import: ProfileImportResult
+    access_token: str = field(default_factory=lambda: token_urlsafe(32))
+    fixture_audio_id: str = "david_fragment_001"
+    lock: threading.RLock = field(default_factory=threading.RLock)
+    latest_turn_id: str | None = None
+    latest_response: QAResponse | None = None
+
+    def close(self) -> None:
+        self.runtime.stop()
+        self.repository.close()
+        shutil.rmtree(self.storage_root, ignore_errors=True)
+
+    def ask(
+        self,
+        *,
+        wav_bytes: bytes,
+        primary_transcript: str | None,
+        turn_id: str,
+    ) -> dict[str, Any]:
+        with self.lock:
+            if self.runtime.stopped:
+                raise QARuntimeError("QA session is stopped")
+            audio_id = (
+                self.fixture_audio_id
+                if self.mode == "mock"
+                else f"qa-audio-{turn_id}"
+            )
+            self.audio_store.put_wav_bytes(audio_id, wav_bytes)
+            if primary_transcript:
+                self.asr.submit_primary(
+                    audio_id,
+                    primary_transcript,
+                    language=self.runtime.language,
+                )
+            try:
+                response = self.runtime.ask(
+                    audio_id=audio_id, turn_id=turn_id
+                )
+            finally:
+                self.audio_store.delete(audio_id)
+
+            speech = self.tts.synthesize_neutral_text(
+                response.spoken_text(), language=self.runtime.language
+            )
+            self.latest_turn_id = turn_id
+            self.latest_response = response
+            if speech.status != "success":
+                self.tts.neutral_result = None
+            return self.response()
+
+    def cancel_turn(self, turn_id: str) -> dict[str, Any]:
+        with self.lock:
+            removed = self.runtime.cancel_turn(turn_id)
+            if self.latest_turn_id == turn_id:
+                self.latest_turn_id = None
+                self.latest_response = None
+                self.tts.neutral_result = None
+            payload = self.response()
+            payload["turn_cancelled"] = True
+            payload["removed_from_context"] = removed
+            return payload
+
+    def stop(self) -> dict[str, Any]:
+        with self.lock:
+            self.runtime.stop()
+            self.latest_turn_id = None
+            self.latest_response = None
+            self.tts.neutral_result = None
+            return self.response()
+
+    def response(self) -> dict[str, Any]:
+        turn_count = sum(
+            turn.role is QARole.USER for turn in self.runtime.history
+        )
+        return {
+            "notice": (
+                SIMULATED_NOTICE
+                if self.profile.simulated
+                else "User profile data; not a clinical accuracy claim."
+            ),
+            "simulated": self.profile.simulated,
+            "mode": self.mode,
+            "session_id": self.runtime.session_id,
+            "stopped": self.runtime.stopped,
+            "turn_count": turn_count,
+            "latest_turn_id": self.latest_turn_id,
+            "response": (
+                self.latest_response.model_dump(mode="json")
+                if self.latest_response
+                else None
+            ),
+            "audio_available": (
+                self.latest_turn_id is not None
+                and _audio_available(self.tts.neutral_result)
+            ),
+            "voice_mode": "neutral_private_only",
+            "memory_write_enabled": False,
+            "trace_items": [
+                event.model_dump(mode="json")
+                for event in self.runtime.events
+            ],
+        }
+
+    def audio(self, turn_id: str) -> TTSResult | None:
+        if turn_id != self.latest_turn_id:
+            return None
+        return self.tts.neutral_result
+
+
 class DemoSessionStore:
     def __init__(self, settings: WebDemoSettings) -> None:
         self._settings = settings
         self._sessions: dict[str, DemoSession] = {}
+        self._qa_sessions: dict[str, QADemoSession] = {}
         self._lock = threading.RLock()
         root = Path(__file__).resolve().parents[2]
         if settings.profile_database_backend == "mysql":
@@ -465,9 +671,34 @@ class DemoSessionStore:
             session = _build_session(
                 self._settings,
                 profile=profile,
+                profile_ref=profile_ref,
+                profile_registry=self._profiles,
                 language=language,
             )
             self._sessions[session.runtime.session.session_id] = session
+            return session
+
+    def create_qa(
+        self,
+        *,
+        profile_ref: str = "no_profile",
+        language: str = "en",
+    ) -> QADemoSession:
+        with self._lock:
+            if (
+                len(self._sessions) + len(self._qa_sessions)
+                >= self._settings.max_sessions
+            ):
+                raise RuntimeError("Demo session capacity reached")
+            profile = self._profiles.resolve(profile_ref)
+            if language not in profile.patient.languages:
+                raise ValueError("language is not enabled for this profile")
+            session = _build_qa_session(
+                self._settings,
+                profile=profile,
+                language=language,
+            )
+            self._qa_sessions[session.runtime.session_id] = session
             return session
 
     def get(self, session_id: str, access_token: str) -> DemoSession:
@@ -481,11 +712,28 @@ class DemoSessionStore:
             raise KeyError("Demo session not found")
         return session
 
+    def get_qa(
+        self, session_id: str, access_token: str
+    ) -> QADemoSession:
+        with self._lock:
+            session = self._qa_sessions.get(session_id)
+        if session is None or not access_token:
+            raise KeyError("QA session not found")
+        from hmac import compare_digest
+
+        if not compare_digest(access_token, session.access_token):
+            raise KeyError("QA session not found")
+        return session
+
     def close_all(self) -> None:
         with self._lock:
             sessions = list(self._sessions.values())
             self._sessions.clear()
+            qa_sessions = list(self._qa_sessions.values())
+            self._qa_sessions.clear()
         for session in sessions:
+            session.close()
+        for session in qa_sessions:
             session.close()
         self._profiles.close()
 
@@ -494,6 +742,8 @@ def _build_session(
     settings: WebDemoSettings,
     *,
     profile: ProfileBundle,
+    profile_ref: str,
+    profile_registry: DemoProfileRegistry,
     language: str,
 ) -> DemoSession:
     root = Path(__file__).resolve().parents[2]
@@ -585,6 +835,80 @@ def _build_session(
         tts=tts,
         asr=asr,
         command_intent=command_intent,
+        mode=settings.mode,
+        storage_root=session_root,
+        profile=profile,
+        profile_import=profile_import,
+        profile_ref=profile_ref,
+        profile_registry=profile_registry,
+        fixture_audio_id=fixture["audio_id"],
+    )
+
+
+def _build_qa_session(
+    settings: WebDemoSettings,
+    *,
+    profile: ProfileBundle,
+    language: str,
+) -> QADemoSession:
+    root = Path(__file__).resolve().parents[2]
+    fixture_path = root / "demo/fixtures/golden_path.json"
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+    patient = profile.patient
+    session_id = f"qa-{uuid4().hex}"
+    session_root = settings.audio_store_root / session_id
+    audio_store = AudioStore(session_root)
+    repository = SQLiteRepository(check_same_thread=False)
+    profile_import = seed_profile_repository(repository, profile)
+
+    if settings.mode == "cloud":
+        if not settings.gateway_token:
+            repository.close()
+            raise RuntimeError("Cloud demo requires GATEWAY_TOKEN")
+        client = GatewayHttpClient(
+            settings.gateway_url,
+            timeout_seconds=settings.gateway_timeout_seconds,
+            max_attempts=settings.gateway_max_attempts,
+            token=settings.gateway_token,
+        )
+        base_asr: ASRPort = GatewayASRAdapter(
+            client=client,
+            audio_store=audio_store,
+            patient_id=patient.patient_id,
+            session_id=session_id,
+        )
+        qa: QAPort = GatewayQAAdapter(
+            client=client,
+            patient_id=patient.patient_id,
+            session_id=session_id,
+        )
+        delegate_tts: TTSPort = GatewayTTSAdapter(
+            client=client, audio_store=audio_store
+        )
+    else:
+        base_asr = MockASRAdapter.from_json(fixture_path)
+        qa = MockQAAdapter()
+        delegate_tts = CachedTTSAdapter(
+            root / fixture["tts"]["neutral_cache"],
+            root / fixture["tts"]["personal_cache"],
+        )
+
+    asr = HeadsetPrimaryASRAdapter(base_asr)
+    tts = CapturingTTSAdapter(delegate_tts)
+    runtime = QARuntime(
+        session_id=session_id,
+        patient_id=patient.patient_id,
+        language=language,
+        asr=asr,
+        qa=qa,
+        repository=repository,
+    )
+    return QADemoSession(
+        runtime=runtime,
+        repository=repository,
+        audio_store=audio_store,
+        tts=tts,
+        asr=asr,
         mode=settings.mode,
         storage_root=session_root,
         profile=profile,

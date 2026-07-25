@@ -14,14 +14,37 @@ Viaim microphone
   -> existing Runtime / Gateway / StepFun flow
 
 Local PCM/text activity
-  -> 8 seconds without detected speech ends one expression
+  -> 5 seconds without detected speech ends one expression
   -> Web Demo generates candidates
   -> first candidate is privately read through the earbuds
   -> a short earbud-microphone capture interprets the patient's response
   -> “是/嗯/没错” confirms; “不是/不对/换一个” reads another candidate
   -> confirmed candidate is played by the iPhone speaker in a neutral voice
   -> a fresh capture round starts automatically
+
+QA mode uses a separate temporary conversation:
+
+```text
+Viaim PCM + primary text
+  -> dual-ASR transcript evidence
+  -> conservative incomplete-question completion
+  -> direct AI answer for low/medium uncertainty
+  -> one natural clarification for high uncertainty
+  -> neutral TTS played privately through the earbuds
+  -> next question capture starts automatically
 ```
+
+QA turns do not enter the patient-expression authorization state machine, use
+personal voice, create an expression receipt, or write verified memory.
+Conversation history exists only inside the active QA session.
+```
+
+While companion mode is active, **结束本次表达** stops and discards the
+current capture/readback/playback only. The backend marks that expression
+`expression_cancelled`, clears its candidates and authorization scope, creates
+no receipt or verified memory, and the app immediately starts a fresh capture
+round. **由陪护者结束会话** remains the separate control for ending companion
+mode.
 
 No raw PCM is written to iPhone storage. Unconfirmed candidates are not shown
 on the caregiver screen. Private prompts are played only after iOS verifies an
@@ -46,6 +69,17 @@ matches the active candidate and private prompt.
 detects it. Reject, repeat, and unknown do not authorize playback. High-risk or
 L3 candidates require two distinct private readbacks and two distinct
 affirmation recordings.
+
+## Headset gesture availability
+
+The bundled Viaim iOS v1.0.0 public SDK exposes connection/device status,
+recording, PCM, text-stream, call-state and flash-record APIs. Its public
+headers do not expose an earbud touch, squeeze/pinch, tap, button, or generic
+gesture callback. MeantByMe therefore uses the in-app **结束本次表达／结束本次提问**
+button. The expression button sends the dedicated `cancel_expression` runtime
+command, while QA cancellation removes the current temporary turn. A future
+vendor-supported gesture can call the same app actions without changing
+consent or memory policy. Do not bind to the SDK's private headers.
 
 ## User profiles
 
@@ -107,10 +141,10 @@ configured on the `meantbyme-ios` BFF; the native iOS app and
   simulator acceptance target.
 - Pair the Viaim headset in iOS Bluetooth settings before pressing Connect.
 - Keep the app in the foreground for the MVP.
-- Speak once, then remain silent for 8 seconds. The timer is refreshed by
+- Speak once, then remain silent for 5 seconds. The timer is refreshed by
   Viaim partial/final text or local PCM energy, so unclear speech can still
   delimit an expression even when no text is produced.
-- The 8-second trailing silence is used only as an end-of-expression signal.
+- The 5-second trailing silence is used only as an end-of-expression signal.
   Before upload, the app removes that trailing silence while retaining small
   pre/post-roll padding around detected speech.
 - Confirm that an unconfirmed readback never falls back to the iPhone speaker.
@@ -120,5 +154,7 @@ configured on the `meantbyme-ios` BFF; the native iOS app and
   privately repeats the candidate instead of playing it publicly.
 - Disconnecting the headset must stop the flow without confirming.
 
-The companion app currently implements expression mode. QA remains visible but
-fails closed until the teammate backend exposes a QA endpoint.
+For QA acceptance, select **向 AI 提问**, ask an incomplete question, and wait
+for the private neutral-voice answer. **结束本次提问** removes the active turn
+from temporary history and immediately starts a new question capture; it does
+not stop the whole companion session.

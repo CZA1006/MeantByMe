@@ -7,7 +7,7 @@ Last updated: 2026-07-25. Active implementation branch: `feature/earPhones`.
 - ✅ Git repo + remote + branch model (`main` / `develop` / `nick/runtime` / `jiayi/backend` / `an/frontend`)
 - ✅ Python 3.11.8 `.venv` (isolated from system Anaconda)
 - ✅ `pyproject.toml`, `.gitignore`, `.env` (git-ignored) / `.env.example` (placeholders)
-- ✅ Frozen decisions **D1–D20** ([DECISIONS.md](../DECISIONS.md))
+- ✅ Frozen decisions **D1–D21** ([DECISIONS.md](../DECISIONS.md))
 - ✅ Secrets policy enforced (no keys in tracked files; verified by scans)
 
 ## Core runtime — Milestone 1 (deterministic shell) ✅
@@ -15,13 +15,13 @@ Last updated: 2026-07-25. Active implementation branch: `feature/earPhones`.
 - ✅ State machine (whitelisted transitions) + command handler
 - ✅ Uncertainty router (D10) + memory band downgrade (D11)
 - ✅ Progressive clarification, `None of these`, partial correction via `ConfirmedContext` (D13)
-- ✅ Candidate ranker — Gold > Silver weighting (D14/D17), never auto-selects
+- ✅ Candidate ranker — all explicit trusted memories have equal weight; never auto-selects
 - ✅ Authorization policy — two-layer consent (D15), `AuthorizedExpression` type-gate
 - ✅ Risk gate deterministic (D5) + high-risk strict confirmation (D16); **bilingual** — CJK high-risk lexicon (医生/治疗/药物/自杀/转账/合同/律师… ) + emergency codes (110/120), still raise-only
 - ✅ Single-source ASR routing: rich single-ASR evidence routes to MEDIUM (candidates) instead of forcing a generic category question — still requires confirmation, never auto-selects
 - ✅ Expression Receipt + verified-memory writeback (idempotent, D8)
 - ✅ Runtime event trace
-- ✅ SQLite storage with safety constraints (D4): patient-scoped, Gold CHECK, cross-patient blocked
+- ✅ SQLite storage with safety constraints (D4): patient-scoped, explicit-confirmation evidence, cross-patient blocked
 - ✅ Mock adapters (ASR / intent / cached TTS) + demo profile + fixtures
 - ✅ Safety test suite (unconfirmed-can't-speak, silence-can't-confirm, caregiver-can't-authorize, cross-patient-blocked, no-double-write, TTS-fail≠spoken, core-no-forbidden-imports, …)
 
@@ -39,12 +39,15 @@ Last updated: 2026-07-25. Active implementation branch: `feature/earPhones`.
 - 🟡 OpenAgents fallback wired but its demo endpoint is too slow for candidate JSON (kept as fallback only)
 
 ## Memory & personalization ✅
-- ✅ Gold / Silver / Unverified tiers; patient-scoped retrieval
-- ✅ Retrieval → ranking influence (Gold-match floats correct candidate to #1) — verified live
+- ✅ Trusted / Unconfirmed product states; legacy Gold/Silver read with equal trusted weight
+- ✅ Retrieval → ranking influence (trusted match floats correct candidate to #1) — verified live
 - ✅ Writeback increments usage_count (self-evolution) — verified live (usage 2→3)
 - ✅ Rejected candidates as negative feedback, never preferences
-- ✅ Structured Context-Memory stored per patient; Gold patient/seed context and caregiver Silver remain distinguishable
-- ⬜ Local embeddings / phonetic search (P1) — currently keyword/token overlap
+- ✅ Structured Context-Memory stored per user
+- ✅ Current user's trusted structured profile is always included in intent/QA model context (patient-scoped, maximum 8 entries)
+- ✅ Dynamic expression memory: existing confirm/reject/edit actions update confidence-scored expression→intent mappings without a second “Remember” step
+- ✅ Lightweight local expression embeddings, confidence-gated retrieval, idempotent feedback events, and cross-profile isolation
+- ⬜ Production embedding adapter / phonetic search (P1) — deterministic local vectors are used in mock/demo mode
 - ⬜ Acoustic phrase prototypes / voice-stage weighting (P1)
 
 ## Voice output
@@ -71,7 +74,8 @@ Last updated: 2026-07-25. Active implementation branch: `feature/earPhones`.
 - ✅ Dedicated Web Demo BFF/service entry (`Dockerfile.meantbyme-demo`)
 - ✅ Web Demo deployed as a second Zeabur service at `meantbyme-demo.zeabur.app`
 - ✅ Structured simulated profile bundles, no-profile control, process-local
-  Markdown upload, relevant Context-Memory Top-5, and same-audio A/B rerun (D20)
+  Markdown upload, current-user profile injection (up to 8 Context-Memory
+  entries), and same-audio A/B rerun (D20)
 - 🟡 Viaim iOS 15 client implemented: SDK connection, 16 kHz PCM + primary
   text evidence, natural voice-command interpretation, earbud-only private
   readback, iPhone-speaker public output, playback receipt, and safe hardware
@@ -79,7 +83,7 @@ Last updated: 2026-07-25. Active implementation branch: `feature/earPhones`.
 - ⬜ Remote persistence / backup, production reliability
 
 ## Evaluation & testing
-- ✅ pytest: **131 passing** (unit / safety / integration / gateway / web demo / eval); mock+fallback golden paths green, UAR 0
+- ✅ pytest: **166 passing** (unit / safety / integration / gateway / web demo / eval); mock+fallback golden paths green, UAR 0
 - ✅ **Live public deployment verified (2026-07-24):** gateway `meantbyme.zeabur.app` (health 200, auth-gated — no/wrong token → 401, correct token → real `step-explore` candidates with situation+memory disambiguation) and web demo `meantbyme-demo.zeabur.app` (cloud mode, access-gated — session create without `WEB_DEMO_TOKEN` → 401)
 - ✅ Eval harness **spec** ([EVAL_HARNESS.md](EVAL_HARNESS.md)) + **implementation** (`src/meantbyme/eval`) with `mock` / `replay` / `cloud` modes, hard gates, high-risk redaction
 - ✅ 26-sample EN/ZH dataset with paired situational samples (`demo/eval/dataset.jsonl`)

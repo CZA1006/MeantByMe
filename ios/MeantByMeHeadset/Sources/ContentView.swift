@@ -12,7 +12,11 @@ struct ContentView: View {
                         .foregroundColor(.indigo)
                     Text("MeantByMe")
                         .font(.largeTitle.bold())
-                    Text("耳机私密朗读，患者语音确认后再外放")
+                    Text(
+                        companion.mode == .qa
+                            ? "补全残缺问题，AI 回答只在耳机中播放"
+                            : "耳机私密朗读，患者语音确认后再外放"
+                    )
                         .multilineTextAlignment(.center)
                         .foregroundColor(.secondary)
                 }
@@ -55,8 +59,8 @@ struct ContentView: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(
                                 companion.expressionTimerActive
-                                    ? "本次表达正在计时"
-                                    : "本次表达计时结束"
+                                    ? "\(companion.currentRoundLabel)正在计时"
+                                    : "\(companion.currentRoundLabel)计时结束"
                             )
                             .font(.subheadline)
                             .foregroundColor(.secondary)
@@ -100,17 +104,49 @@ struct ContentView: View {
                         .buttonStyle(.bordered)
                     }
                 } else {
-                    Text("持续陪伴中。停顿 8 秒后自动补全；说“是/嗯”确认，说“不是/不对”更换。")
+                    Text(companion.activeGuidance)
                         .font(.headline)
                         .multilineTextAlignment(.center)
-                    Button("由陪护者结束会话", role: .destructive) {
-                        Task { await companion.stopCompanion() }
+
+                    VStack(spacing: 12) {
+                        Button {
+                            Task {
+                                await companion.cancelCurrentExpression()
+                            }
+                        } label: {
+                            Label(
+                                companion.cancelActionLabel,
+                                systemImage: "xmark.circle.fill"
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.orange)
+                        .controlSize(.large)
+                        .disabled(!companion.canCancelCurrentExpression)
+                        .accessibilityHint(
+                            companion.mode == .qa
+                                ? "丢弃当前问题和回答并继续陪伴，不会进入后续对话上下文"
+                                : "丢弃当前这句话并继续陪伴，不会确认、外放或写入记忆"
+                        )
+
+                        Text(companion.cancelGuidance)
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+
+                        Button("由陪护者结束会话", role: .destructive) {
+                            Task { await companion.stopCompanion() }
+                        }
+                        .buttonStyle(.bordered)
                     }
-                    .buttonStyle(.bordered)
                 }
 
                 Spacer()
-                Text("候选只在耳机中播放；确认后也只使用系统中性音。")
+                Text(
+                    companion.mode == .qa
+                        ? "AI 回答只在耳机中播放；不代表患者对外表达，也不写入确认记忆。"
+                        : "候选只在耳机中播放；确认后也只使用系统中性音。"
+                )
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)

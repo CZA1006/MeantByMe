@@ -8,7 +8,7 @@ from meantbyme.core.personalization.text import normalize
 
 def _score(
     candidate: ExpressionCandidate, memories: list[MemoryItem]
-) -> tuple[int, list[str]]:
+) -> tuple[float, list[str]]:
     score = len(candidate.patient_supported_spans) * 10
     reasons = list(candidate.ranking_reasons)
     normalized_candidate = normalize(candidate.text)
@@ -16,20 +16,25 @@ def _score(
     for memory in memories:
         if memory.text is None:
             continue
-        is_gold = memory.verification_level is VerificationLevel.GOLD
-        exact_weight = 1_000 if is_gold else 250
-        support_weight = 100 if is_gold else 40
-        similarity_weight = 25 if is_gold else 8
-        level_reason = "gold patient" if is_gold else "silver-assisted"
+        if memory.verification_level is VerificationLevel.UNVERIFIED:
+            continue
+        exact_weight = 1_000
+        support_weight = 100
+        similarity_weight = 25
+        level_reason = "trusted"
+        confidence = 1.0
+        if memory.context.get("kind") == "expression_mapping":
+            confidence = float(memory.context.get("confidence", 0.0))
+            level_reason = f"learned ({confidence:.0%} confidence)"
 
         if normalize(memory.text) == normalized_candidate:
-            score += exact_weight
+            score += exact_weight * confidence
             reasons.append(f"exact {level_reason} phrase")
         if memory.id in candidate.memory_support_ids:
-            score += support_weight
+            score += support_weight * confidence
             reasons.append(f"{level_reason} memory support")
         if memory.similarity_band == "high":
-            score += similarity_weight
+            score += similarity_weight * confidence
             reasons.append(f"high-similarity {level_reason} memory")
 
     score -= len(candidate.ai_added_spans) * 2
@@ -54,7 +59,11 @@ def rank_candidates(
 
 def has_strong_verified_match(memories: list[MemoryItem]) -> bool:
     return any(
-        memory.verification_level is VerificationLevel.GOLD
+        memory.verification_level is not VerificationLevel.UNVERIFIED
         and memory.similarity_band == "high"
+        and (
+            memory.context.get("kind") != "expression_mapping"
+            or float(memory.context.get("confidence", 0.0)) >= 0.55
+        )
         for memory in memories
     )

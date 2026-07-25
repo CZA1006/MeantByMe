@@ -24,12 +24,22 @@ INTENT_PAYLOAD = {
     "memories": [],
     "confirmed_context": {},
 }
+QA_PAYLOAD = {
+    "patient_id": "patient-test",
+    "session_id": "session-test",
+    "language": "en",
+    "situation": None,
+    "evidence": {},
+    "history": [],
+    "memories": [],
+}
 
 
 class RecordingGatewayProvider:
     def __init__(self) -> None:
         self.intent_calls: list[dict[str, Any]] = []
         self.asr_calls = 0
+        self.qa_calls: list[dict[str, Any]] = []
 
     def transcribe(
         self, wav: bytes, *, language_hint: str | None
@@ -57,6 +67,21 @@ class RecordingGatewayProvider:
             "intent": "affirm",
             "status": "success",
             "confidence": 1,
+            "error": None,
+        }
+
+    def respond_qa(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.qa_calls.append(payload)
+        return {
+            "understood_question": "test",
+            "patient_supported_spans": ["test"],
+            "ai_added_spans": [],
+            "uncertainty": "low_uncertainty",
+            "should_clarify": False,
+            "clarification_question": None,
+            "answer": "answer",
+            "risk_level": "ordinary",
+            "status": "success",
             "error": None,
         }
 
@@ -92,6 +117,7 @@ def _client(
             },
         ),
         ("/v1/intent/propose", {"json": INTENT_PAYLOAD}),
+        ("/v1/qa/respond", {"json": QA_PAYLOAD}),
         (
             "/v1/commands/interpret",
             {

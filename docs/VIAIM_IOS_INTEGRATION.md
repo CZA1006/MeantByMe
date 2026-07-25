@@ -11,6 +11,12 @@ The iOS client is a second front end over the same session API.
 - `POST /api/sessions/{id}/commands`
 - `GET /api/sessions/{id}/audio/neutral`
 
+`cancel_expression` is distinct from `stop`: it terminates only the current
+expression session, revokes any this-expression authorization, deletes pending
+command evidence/audio, and produces an `EXPRESSION_CANCELLED` trace event.
+The iOS client then creates a new expression session and resumes listening;
+companion mode remains active.
+
 ## Voice-command endpoint
 
 `POST /api/sessions/{id}/earbud/interpret` receives the short response recorded
@@ -37,10 +43,10 @@ headset text stream.
 ## Current MVP capture behavior
 
 The SDK provides PCM continuously and primary partial/final text. The first
-detected speech starts an 8-second silence window; later speech refreshes it.
+detected speech starts a 5-second silence window; later speech refreshes it.
 Detection uses both non-empty Viaim text events and a lightweight local PCM
 energy check so indistinct speech is not dependent on successful ASR.
-The 8-second end-of-expression silence is removed on-device before WAV
+The 5-second end-of-expression silence is removed on-device before WAV
 encoding; it is a boundary signal, not part of the ASR request. Internal pauses
 between fragments are preserved, together with short pre/post-roll padding.
 
@@ -65,6 +71,16 @@ unique playback ID. Receipt creation, the `SPOKEN` event and verified-memory
 write occur only after that callback. `playback_failed` leaves the session
 without a receipt or memory write. No voice consent or cloned-voice TTS is used
 by this flow.
+
+## Hardware controls
+
+The public headers shipped in the repository's Viaim iOS v1.0.0 package were
+checked for a patient-operated shortcut. They expose no touch, pinch/squeeze,
+tap, button, or gesture event. The native app therefore provides an
+**结束本次表达** button. Its implementation is intentionally routed through
+`cancel_expression`, so it can be reused if Viaim publishes a supported
+hardware-event API later. Private SDK headers are not an integration contract
+and must not be used.
 
 ## Deployment
 

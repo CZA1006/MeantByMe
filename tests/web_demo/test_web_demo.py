@@ -46,6 +46,22 @@ def _create_session(
     return payload, headers
 
 
+def _create_qa_session(
+    client: TestClient,
+) -> tuple[dict, dict[str, str]]:
+    response = client.post(
+        "/api/qa/sessions",
+        headers={"X-Demo-Token": DEMO_TOKEN},
+        json={"language": "en", "profile_ref": "david_demo"},
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    return payload, {
+        "X-Demo-Token": DEMO_TOKEN,
+        "X-Demo-Session": payload["session_token"],
+    }
+
+
 def _command(
     client: TestClient,
     session_id: str,
@@ -118,6 +134,61 @@ def test_health_and_page_are_public_but_sessions_require_demo_token(
     assert wrong.status_code == 401
 
 
+def test_qa_session_answers_without_confirmation_and_can_cancel_turn(
+    tmp_path: Path,
+) -> None:
+    transcript_header = base64.b64encode(
+        b"why is the sky blue"
+    ).decode("ascii")
+    with TestClient(create_app(settings=_settings(tmp_path))) as client:
+        created, headers = _create_qa_session(client)
+        session_id = created["session_id"]
+        turn_id = "turn-1"
+        answered = client.post(
+            f"/api/qa/sessions/{session_id}/turns/{turn_id}",
+            headers={
+                **headers,
+                "Content-Type": "audio/wav",
+                "X-Viaim-Primary-Transcript-B64": transcript_header,
+            },
+            content=wav_bytes(),
+        )
+        audio = client.get(
+            f"/api/qa/sessions/{session_id}/turns/{turn_id}/audio",
+            headers=headers,
+        )
+        cancelled = client.post(
+            (
+                f"/api/qa/sessions/{session_id}/turns/"
+                f"{turn_id}/cancel"
+            ),
+            headers=headers,
+        )
+        missing_audio = client.get(
+            f"/api/qa/sessions/{session_id}/turns/{turn_id}/audio",
+            headers=headers,
+        )
+        stopped = client.post(
+            f"/api/qa/sessions/{session_id}/stop", headers=headers
+        )
+
+    assert answered.status_code == 200, answered.text
+    payload = answered.json()
+    assert payload["response"]["should_clarify"] is False
+    assert payload["audio_available"] is True
+    assert payload["voice_mode"] == "neutral_private_only"
+    assert payload["memory_write_enabled"] is False
+    assert "receipt" not in payload
+    assert audio.status_code == 200
+    assert audio.content.startswith(b"RIFF")
+    assert cancelled.status_code == 200
+    assert cancelled.json()["turn_count"] == 0
+    assert cancelled.json()["removed_from_context"] is True
+    assert missing_audio.status_code == 404
+    assert stopped.status_code == 200
+    assert stopped.json()["stopped"] is True
+
+
 def test_expression_upload_merges_viaim_primary_without_echoing_text(
     tmp_path: Path,
 ) -> None:
@@ -163,6 +234,40 @@ def test_frontend_never_auto_checks_patient_confirmation() -> None:
     assert (
         "appState.maxAudioSeconds - RECORDING_STOP_HEADROOM_SECONDS"
         in script
+    )
+    assert "Remember this" not in script
+    assert "profile-updates" not in script
+
+
+def test_cancel_expression_is_distinct_from_stopping_companion(
+    tmp_path: Path,
+) -> None:
+    with TestClient(create_app(settings=_settings(tmp_path))) as client:
+        created, headers = _create_session(client)
+        session_id = created["session"]["session_id"]
+        _command(client, session_id, headers, "start_capture")
+        cancelled = _command(
+            client,
+            session_id,
+            headers,
+            "cancel_expression",
+        )
+
+    assert (
+        cancelled["session"]["stage"]
+        == SessionStage.EXPRESSION_CANCELLED
+    )
+    assert cancelled["session"]["candidates"] == []
+    assert cancelled["receipt"] is None
+    event = next(
+        item
+        for item in cancelled["session"]["trace_items"]
+        if item["event_type"] == RuntimeEventType.EXPRESSION_CANCELLED
+    )
+    assert event["payload"]["actor"] == "caregiver"
+    assert all(
+        item["event_type"] != RuntimeEventType.SESSION_STOPPED
+        for item in cancelled["session"]["trace_items"]
     )
 
 
@@ -236,7 +341,7 @@ def test_structured_markdown_profile_upload_is_persistent_and_selectable(
     assert invalid.status_code == 422
 
 
-def test_questionnaire_profile_is_silver_persistent_and_selectable(
+def test_questionnaire_profile_is_trusted_persistent_and_selectable(
     tmp_path: Path,
 ) -> None:
     settings = _settings(
@@ -274,10 +379,8 @@ def test_questionnaire_profile_is_silver_persistent_and_selectable(
     assert summary["memory_count"] == 3
     assert detail.status_code == 200
     memories = detail.json()["profile"]["memories"]
-    assert all(item["source"] == "caregiver" for item in memories)
-    assert all(
-        item["verification_level"] == "silver" for item in memories
-    )
+    assert all(item["source"] == "user_input" for item in memories)
+    assert all(item["trust_state"] == "trusted" for item in memories)
     assert session.status_code == 200
     assert session.json()["profile"]["profile_id"].startswith("user-")
     assert session.json()["profile"]["context_count"] == 3
@@ -313,7 +416,7 @@ def test_questionnaire_requires_profile_content(tmp_path: Path) -> None:
     assert response.status_code == 422
 
 
-def test_real_markdown_cannot_self_assert_gold_patient_memory(
+def test_explicit_markdown_import_is_trusted_without_voice_authority(
     tmp_path: Path,
 ) -> None:
     payload = {
@@ -370,8 +473,8 @@ def test_real_markdown_cannot_self_assert_gold_patient_memory(
 
     assert uploaded.status_code == 200
     memory = detail.json()["profile"]["memories"][0]
-    assert memory["verification_level"] == "silver"
-    assert memory["source"] == "caregiver"
+    assert memory["trust_state"] == "trusted"
+    assert memory["source"] == "user_input"
 
 
 def test_audio_upload_accepts_limit_and_rejects_longer_wav(
@@ -622,6 +725,10 @@ def test_full_mock_browser_loop_completes_with_receipt_and_audio(
             },
             confirmation_method="large_button",
         )
+        profile_detail = client.get(
+            "/api/profiles/david_demo",
+            headers={"X-Demo-Token": DEMO_TOKEN},
+        )
         personal = client.get(
             f"/api/sessions/{session_id}/audio/personal",
             headers=headers,
@@ -638,6 +745,13 @@ def test_full_mock_browser_loop_completes_with_receipt_and_audio(
         )
 
     assert authorized["session"]["stage"] == SessionStage.VOICE_AUTHORIZED
+    assert authorized["dynamic_memory"] == {
+        "feedback_status": "positive_recorded",
+        "requires_extra_confirmation": False,
+    }
+    assert (
+        profile_detail.json()["profile"]["expression_mapping_count"] == 1
+    )
     assert authorized["receipt"] is None
     assert completed["session"]["stage"] == SessionStage.COMPLETED
     assert completed["receipt"]["patient_confirmed"] is True
@@ -731,10 +845,59 @@ def test_cloud_browser_loop_uses_stub_gateway_only(
     assert completed["session"]["stage"] == SessionStage.COMPLETED
     assert completed["receipt"]["patient_confirmed"] is True
     assert state.last_intent_payload is not None
-    assert state.last_intent_payload["situation"] is None
+    model_context = state.last_intent_payload["situation"]
+    assert "Current user profile" in model_context
+    assert "Daughter Mia visits on weekends." in model_context
+    assert "living-room window open" in model_context
     context_event = next(
         event
         for event in completed["session"]["trace_items"]
         if event["event_type"] == RuntimeEventType.CONTEXT_RETRIEVED
     )
-    assert context_event["payload"]["count"] == 0
+    assert context_event["payload"]["count"] == 3
+
+
+def test_cloud_qa_session_sends_temporary_multiturn_history(
+    tmp_path: Path,
+) -> None:
+    state = StubGatewayState()
+    transcript = "I don't want to go tomorrow"
+    encoded = base64.b64encode(transcript.encode()).decode("ascii")
+    with running_stub_gateway(state) as gateway:
+        settings = _settings(
+            tmp_path,
+            mode="cloud",
+            gateway_url=gateway.base_url,
+            gateway_token="stub-gateway-token",
+            gateway_timeout_seconds=1.0,
+            gateway_max_attempts=1,
+        )
+        with TestClient(create_app(settings=settings)) as client:
+            created, headers = _create_qa_session(client)
+            session_id = created["session_id"]
+            for turn_id in ("turn-1", "turn-2"):
+                answer = client.post(
+                    (
+                        f"/api/qa/sessions/{session_id}/turns/"
+                        f"{turn_id}"
+                    ),
+                    headers={
+                        **headers,
+                        "Content-Type": "audio/wav",
+                        "X-Viaim-Primary-Transcript-B64": encoded,
+                    },
+                    content=wav_bytes(),
+                )
+                assert answer.status_code == 200, answer.text
+                assert answer.json()["response"]["answer"] == (
+                    "This is the stub AI answer."
+                )
+
+    assert state.last_qa_payload is not None
+    qa_model_context = state.last_qa_payload["situation"]
+    assert "Current user profile" in qa_model_context
+    assert "Daughter Mia visits on weekends." in qa_model_context
+    assert [turn["role"] for turn in state.last_qa_payload["history"]] == [
+        "user",
+        "assistant",
+    ]

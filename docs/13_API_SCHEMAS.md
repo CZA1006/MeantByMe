@@ -75,6 +75,7 @@ class MemoryItem(BaseModel):
         "semantic", "acoustic", "context",
         "language", "interaction"
     ]
+    # gold/silver are legacy storage values; both map to trusted
     verification_level: Literal["gold", "silver", "unverified"]
     text: str | None
     language: str | None
@@ -147,6 +148,7 @@ class PatientCommand(BaseModel):
         "final_confirm",
         "edit_completion",
         "go_back",
+        "cancel_expression",
         "stop",
         "switch_input_method",
         "request_help"
@@ -245,3 +247,18 @@ POST /v1/memory/write-verified
 ```
 
 必须 enforce patient scope 和 authorization。
+
+## Profile evolution
+
+不增加独立的 Profile Update 确认接口。已有 session command 同时提供反馈：
+
+```text
+final_confirm / confirm_neutral_playback → positive feedback
+reject_current_candidate / none_of_these / edit_completion → negative feedback
+```
+
+响应中的 `dynamic_memory.feedback_status` 表示后台反馈是否成功，
+`requires_extra_confirmation` 固定为 `false`。服务端把反馈聚合为
+`ExpressionMapping(input_text, intent_text, embedding, confidence,
+positive_count, negative_count)`；写入按 session、profile ref 和 patient /
+profile id 限定并幂等。

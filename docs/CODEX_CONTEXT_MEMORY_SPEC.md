@@ -1,5 +1,8 @@
 # Context-Memory — design + Codex spec (D19)
 
+> Historical implementation spec. Its Gold/Silver and caregiver-role rules were
+> superseded by D21. Current semantics are in `docs/PROFILE_EVOLUTION.md`.
+
 Give the agent a persistent, per-patient, structured **Context-Memory** so it can
 accumulate knowledge about a person (routines, people, places, schedule,
 preferences) and **auto-recall** it to disambiguate fragments — replacing the

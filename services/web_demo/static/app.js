@@ -77,7 +77,7 @@ const eventLabels = {
   AUDIO_CAPTURED: "Speech captured",
   ASR_RESULT_RECEIVED: "ASR evidence received",
   EVIDENCE_EXTRACTED: "Stable and uncertain fragments extracted",
-  MEMORY_RETRIEVED: "Verified expression memory retrieved",
+  MEMORY_RETRIEVED: "Trusted expression memory retrieved",
   CONTEXT_RETRIEVED: "Situational memory retrieved",
   UNCERTAINTY_ASSESSED: "Uncertainty route assessed",
   CLARIFICATION_REQUESTED: "Clarification requested",
@@ -93,7 +93,7 @@ const eventLabels = {
   PLAYBACK_FAILED: "Output device reported playback failure",
   EXPRESSION_SPOKEN: "Confirmed expression spoken",
   EXPRESSION_RECEIPT_CREATED: "Expression Receipt created",
-  VERIFIED_MEMORY_WRITTEN: "Verified memory updated",
+  VERIFIED_MEMORY_WRITTEN: "Trusted memory updated",
   SESSION_COMPLETED: "Session completed",
   SESSION_STOPPED: "Session stopped",
   COMMAND_REJECTED: "Command rejected",
@@ -413,7 +413,7 @@ function renderRejectedHeardContent() {
   ui.decision.innerHTML = `
     <span class="eyebrow">Input rejected</span>
     <h1 id="stage-title">That attempt will not be used.</h1>
-    <p class="lead">No candidate was confirmed and no verified memory was written.</p>
+    <p class="lead">No candidate was confirmed and no trusted memory was written.</p>
     <button id="new-after-reject" class="button button-primary" type="button">Start a new session</button>
   `;
   document.querySelector("#new-after-reject").addEventListener("click", createSession);
@@ -463,7 +463,7 @@ function renderCandidateList(target) {
       provenance.append(makeChip(`AI added: ${span}`, "span-chip ai"));
     });
     if (candidate.memory_support_ids.length) {
-      provenance.append(makeChip("Verified memory support", "span-chip"));
+      provenance.append(makeChip("Trusted memory support", "span-chip"));
     }
     target.append(node);
   });
@@ -490,7 +490,7 @@ function renderFinalReview() {
     <div class="review-meta">
       <span class="source-badge">${escapeHtml(selected.source_level)} source</span>
       <span class="risk-badge ${escapeHtml(selected.risk_level)}">${escapeHtml(riskLabel(selected.risk_level))}</span>
-      ${selected.memory_support_ids.length ? '<span class="memory-badge">Verified memory influenced ranking</span>' : ""}
+      ${selected.memory_support_ids.length ? '<span class="memory-badge">Trusted memory influenced ranking</span>' : ""}
     </div>
     <div class="candidate-provenance" id="review-provenance"></div>
     <div class="audio-review">
@@ -556,10 +556,16 @@ async function editExpression() {
 function renderCompleted() {
   const selected = appState.model.selected_candidate;
   const receipt = appState.model.receipt;
+  const feedbackStatus = appState.model.dynamic_memory?.feedback_status;
+  const learningCopy = feedbackStatus === "positive_recorded"
+    ? "Your confirmation was also learned automatically—no extra “remember” step is needed."
+    : feedbackStatus === "failed"
+      ? "The expression completed, but this interaction could not be added to personalized learning."
+      : "No additional memory confirmation is required.";
   ui.decision.innerHTML = `
     <span class="eyebrow">Expression completed</span>
     <h1 id="stage-title">${escapeHtml(selected?.text || "Confirmed expression")}</h1>
-    <p class="lead">The confirmed expression was authorized, spoken, receipted, and written to verified memory.</p>
+    <p class="lead">The confirmed expression was authorized and spoken. ${learningCopy}</p>
     <div class="audio-review">
       <strong>Authorized personal-voice output</strong>
       <audio id="personal-audio" controls preload="none"></audio>
@@ -586,7 +592,7 @@ function renderAuthorizedPlayback() {
   ui.decision.innerHTML = `
     <span class="eyebrow">Voice authorized for this expression</span>
     <h1 id="stage-title">Play the confirmed expression</h1>
-    <p class="lead">Receipt and verified memory are created only after this player finishes successfully.</p>
+    <p class="lead">Receipt and trusted memory are created only after this player finishes successfully.</p>
     <div class="audio-review">
       <strong>Authorized personal-voice output</strong>
       <audio id="authorized-personal-audio" controls preload="auto"></audio>
@@ -617,7 +623,7 @@ function renderStopped() {
   ui.decision.innerHTML = `
     <span class="eyebrow">Session stopped</span>
     <h1 id="stage-title">Nothing was authorized to speak.</h1>
-    <p class="lead">Stopping does not confirm a candidate or write verified memory.</p>
+    <p class="lead">Stopping does not confirm a candidate or write trusted memory.</p>
     <button id="new-session" class="button button-primary" type="button">Start a new session</button>
   `;
   document.querySelector("#new-session").addEventListener("click", () => createSession());
@@ -686,7 +692,7 @@ function traceDetail(event) {
   if (event.event_type === "UNCERTAINTY_ASSESSED") return `${payload.evidence_band} → ${payload.effective_route}`;
   if (event.event_type === "FINAL_CONFIRMATION_RECEIVED") return `${payload.method} · strict ${payload.strict ? "yes" : "no"}`;
   if (event.event_type === "VOICE_AUTHORIZATION_GRANTED") return "Scope: this expression only";
-  if (event.event_type === "VERIFIED_MEMORY_WRITTEN") return `Gold memory · ${payload.new_write ? "new write" : "idempotent update"}`;
+  if (event.event_type === "VERIFIED_MEMORY_WRITTEN") return `Trusted memory · ${payload.new_write ? "new write" : "idempotent update"}`;
   return new Date(event.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 

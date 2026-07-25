@@ -3,6 +3,7 @@ import VisionHeadsetOpenSDK
 
 enum CapturePurpose: Equatable {
     case expression
+    case question
     case command
 }
 
@@ -32,6 +33,9 @@ final class ViaimHeadsetService: NSObject, ObservableObject {
     private var lastEnergyActivityAt: TimeInterval = 0
     private var firstSpeechByteOffset: Int?
     private var lastSpeechByteOffset: Int?
+    private var discardRequested = false
+    private var discardCompletion: (() -> Void)?
+    private var captureStarting = false
 
     override init() {
         super.init()
@@ -74,7 +78,7 @@ final class ViaimHeadsetService: NSObject, ObservableObject {
     }
 
     func startCapture(_ purpose: CapturePurpose, sessionID: String) {
-        guard connected, !recording else { return }
+        guard connected, !recording, !captureStarting else { return }
         let callStatus = manager.callStatusEntity.status
         guard
             callStatus != .comming,
@@ -93,7 +97,10 @@ final class ViaimHeadsetService: NSObject, ObservableObject {
             self.lastEnergyActivityAt = 0
             self.firstSpeechByteOffset = nil
             self.lastSpeechByteOffset = nil
+            self.discardRequested = false
         }
+        captureStarting = true
+        status = "正在启动耳机聆听…"
         manager.recordDelegate = self
         manager.start(.live)
     }
@@ -101,6 +108,33 @@ final class ViaimHeadsetService: NSObject, ObservableObject {
     func stopCapture() {
         guard recording else { return }
         manager.stop(.live)
+    }
+
+    /// Stops the SDK stream and drops all buffered PCM/text without emitting a
+    /// capture. The completion runs after the SDK stop callback, so callers can
+    /// safely start a fresh expression round without overlapping recordings.
+    func discardCurrentCapture(completion: @escaping () -> Void) {
+        captureQueue.sync {
+            discardRequested = true
+            pcm.removeAll(keepingCapacity: false)
+            primaryFinals.removeAll(keepingCapacity: false)
+            captureSessionID = ""
+            firstSpeechByteOffset = nil
+            lastSpeechByteOffset = nil
+        }
+        discardCompletion = completion
+        if recording {
+            manager.stop(.live)
+        } else if !captureStarting {
+            finishDiscard()
+        }
+    }
+
+    private func finishDiscard() {
+        let completion = discardCompletion
+        discardCompletion = nil
+        status = connected ? "本次耳机录音已丢弃" : status
+        completion?()
     }
 }
 
@@ -137,7 +171,9 @@ extension ViaimHeadsetService: VisionHeadsetDelegate {
         DispatchQueue.main.async {
             self.connected = false
             self.recording = false
+            self.captureStarting = false
             self.status = "耳机已断开，会话不会自动确认"
+            self.finishDiscard()
             self.onSafetyInterruption?("耳机连接已断开")
         }
     }
@@ -171,7 +207,19 @@ extension ViaimHeadsetService: VHORecordDelegate {
             }
         }
         DispatchQueue.main.async {
+            let shouldDiscard = self.captureQueue.sync {
+                self.discardRequested
+            }
+            self.captureStarting = false
             self.recording = success
+            if shouldDiscard {
+                if success {
+                    self.manager.stop(.live)
+                } else {
+                    self.finishDiscard()
+                }
+                return
+            }
             self.status = success
                 ? "正在通过耳机聆听…"
                 : failureMessage ?? "耳机录音启动失败"
@@ -186,8 +234,18 @@ extension ViaimHeadsetService: VHORecordDelegate {
         type: VisionHeadsetRecordType,
         error: Error?
     ) {
-        let capture: EarbudCapture? = captureQueue.sync {
-            guard success else { return nil }
+        let result: (capture: EarbudCapture?, discarded: Bool) =
+            captureQueue.sync {
+            let discarded = discardRequested
+            guard success, !discarded else {
+                pcm.removeAll(keepingCapacity: false)
+                primaryFinals.removeAll(keepingCapacity: false)
+                captureSessionID = ""
+                firstSpeechByteOffset = nil
+                lastSpeechByteOffset = nil
+                discardRequested = false
+                return (nil, discarded)
+            }
             let speechPCM = Self.pcmAroundDetectedSpeech(
                 pcm,
                 firstSpeechByteOffset: firstSpeechByteOffset,
@@ -204,11 +262,14 @@ extension ViaimHeadsetService: VHORecordDelegate {
             captureSessionID = ""
             firstSpeechByteOffset = nil
             lastSpeechByteOffset = nil
-            return completed
+            return (completed, false)
         }
         DispatchQueue.main.async {
+            self.captureStarting = false
             self.recording = false
-            if let capture {
+            if result.discarded {
+                self.finishDiscard()
+            } else if let capture = result.capture {
                 self.onCaptureFinished?(capture)
             } else {
                 self.status = "录音结束失败：\(error?.localizedDescription ?? "未知错误")"
@@ -220,6 +281,7 @@ extension ViaimHeadsetService: VHORecordDelegate {
         guard audioData.channel == .microphone else { return }
         let data = audioData.data
         captureQueue.async {
+            guard !self.discardRequested else { return }
             let chunkStart = self.pcm.count
             self.pcm.append(data)
             let now = ProcessInfo.processInfo.systemUptime
@@ -242,16 +304,23 @@ extension ViaimHeadsetService: VHORecordDelegate {
     }
 
     func visionHeadsetRecordBeInterrupted(_ type: VisionHeadsetRecordType) {
-        captureQueue.sync {
+        let wasDiscarding = captureQueue.sync {
+            let wasDiscarding = discardRequested
             pcm.removeAll(keepingCapacity: false)
             primaryFinals.removeAll(keepingCapacity: false)
             captureSessionID = ""
             firstSpeechByteOffset = nil
             lastSpeechByteOffset = nil
+            discardRequested = false
+            return wasDiscarding
         }
         DispatchQueue.main.async {
+            self.captureStarting = false
             self.recording = false
             self.status = "耳机录音被中断；不会执行确认或外放"
+            if wasDiscarding {
+                self.finishDiscard()
+            }
             self.onSafetyInterruption?("耳机录音被系统中断")
         }
     }
@@ -266,7 +335,8 @@ extension ViaimHeadsetService: VHORecordDelegate {
             result.channel == .microphone,
             !trimmedText.isEmpty
         else { return }
-        let currentPurpose = captureQueue.sync { () -> CapturePurpose in
+        let currentPurpose = captureQueue.sync { () -> CapturePurpose? in
+            guard !discardRequested else { return nil }
             if firstSpeechByteOffset == nil {
                 firstSpeechByteOffset = 0
             }
@@ -276,6 +346,7 @@ extension ViaimHeadsetService: VHORecordDelegate {
             }
             return purpose
         }
+        guard let currentPurpose else { return }
         DispatchQueue.main.async {
             self.onSpeechActivity?(currentPurpose)
             if result.type == .final {

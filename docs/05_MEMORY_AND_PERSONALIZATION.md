@@ -36,19 +36,39 @@ MeantByMe 的自进化是：
 
 voice profile、授权范围、有效期、输出渠道和撤销状态。授权是状态而非语义证据,不参与检索/排序。
 
-## Verification levels
+## Trust states
 
-### Gold
+产品只区分两种状态：
 
-患者明确确认。可用于检索、排序、prototype 和未来模型适配。
+### Trusted
 
-### Silver
+当前使用者主动填写、导入，或对档案更新提案作出明确确认。可信资料可用于
+检索、排序和后续个性化，不根据“患者 / 护工 / 家人”等身份再分等级。
 
-护理协助或外部验证，但患者确认不完整。必须单独标记。
+### Unconfirmed
 
-### Unverified
+ASR、LLM/规则抽取、未完成会话或超时产生的信息。只可用于当前 session 或
+独立的待确认提案，不得参与跨会话检索与排序。
 
-ASR、LLM 猜测、未完成会话或超时。只可在临时 session 使用。
+历史数据中的 `gold` / `silver` 均按 Trusted 读取，仅作为兼容存储值；新产品
+界面不再展示两者，也不赋予不同权重。
+
+## Profile evolution
+
+```text
+user expression
+→ generated candidate
+→ existing final confirm / reject / edit action
+→ positive or negative expression-mapping feedback
+→ confidence-gated vector retrieval in later sessions
+```
+
+- 最终确认同时记录正反馈，不增加第二次“记住”操作。
+- 拒绝、全部不对或修改当前候选记录负反馈。
+- 历史案例保存表达向量、目标意图、正负次数与置信度。
+- 只有超过置信度阈值的映射可参与后续检索和排序。
+- 表达映射不自动转换成稳定人物事实；稳定档案仍来自明确填写或导入。
+- 沉默、超时、模型置信度和候选选择本身都不构成反馈确认。
 
 ## Immediate learning
 
@@ -125,7 +145,7 @@ Memory 不可以：
 触发示例：
 
 ```text
-50–100 new Gold samples
+50–100 new Trusted samples
 or recent performance decline
 or explicit review
 ```

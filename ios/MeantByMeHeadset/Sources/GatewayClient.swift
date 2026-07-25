@@ -59,6 +59,29 @@ actor GatewayClient {
         return response
     }
 
+    func createQASession(
+        language: String = "zh",
+        profileRef: String = "lin_yue_demo"
+    ) async throws -> QASessionResponse {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "language": language,
+            "profile_ref": profileRef,
+        ])
+        let response: QASessionResponse = try await request(
+            path: "/api/qa/sessions",
+            method: "POST",
+            contentType: "application/json",
+            body: body,
+            includeSession: false
+        )
+        guard let token = response.sessionToken else {
+            throw GatewayClientError.invalidResponse
+        }
+        sessionId = response.sessionId
+        sessionToken = token
+        return response
+    }
+
     func listProfiles() async throws -> [UserProfileSummary] {
         let response: ProfilesResponse = try await request(
             path: "/api/profiles",
@@ -203,6 +226,94 @@ actor GatewayClient {
         let (data, response) = try await perform(request)
         try validate(response: response, data: data)
         return data
+    }
+
+    func askAI(
+        wav: Data,
+        primaryTranscript: String,
+        turnID: String,
+        expectedSessionID: String
+    ) async throws -> QASessionResponse {
+        guard expectedSessionID == sessionId else {
+            throw GatewayClientError.staleSession
+        }
+        debugLogWAVUpload(
+            kind: "qa",
+            wav: wav,
+            hasPrimaryTranscript: !primaryTranscript.isEmpty
+        )
+        let url = baseURL.appendingPathComponent(
+            "/api/qa/sessions/\(sessionId)/turns/\(turnID)"
+        )
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = wav
+        request.setValue("audio/wav", forHTTPHeaderField: "Content-Type")
+        if !primaryTranscript.isEmpty {
+            request.setValue(
+                Data(primaryTranscript.utf8).base64EncodedString(),
+                forHTTPHeaderField: "X-Viaim-Primary-Transcript-B64"
+            )
+        }
+        addHeaders(to: &request, includeSession: true)
+        let (data, response) = try await perform(request)
+        try validate(response: response, data: data)
+        do {
+            return try JSONDecoder().decode(
+                QASessionResponse.self, from: data
+            )
+        } catch {
+            throw GatewayClientError.invalidResponse
+        }
+    }
+
+    func qaAudio(
+        turnID: String,
+        expectedSessionID: String
+    ) async throws -> Data {
+        guard expectedSessionID == sessionId else {
+            throw GatewayClientError.staleSession
+        }
+        let url = baseURL.appendingPathComponent(
+            "/api/qa/sessions/\(sessionId)/turns/\(turnID)/audio"
+        )
+        var request = URLRequest(url: url)
+        addHeaders(to: &request, includeSession: true)
+        let (data, response) = try await perform(request)
+        try validate(response: response, data: data)
+        return data
+    }
+
+    func cancelQATurn(
+        turnID: String,
+        expectedSessionID: String
+    ) async throws -> QASessionResponse {
+        guard expectedSessionID == sessionId else {
+            throw GatewayClientError.staleSession
+        }
+        return try await request(
+            path: (
+                "/api/qa/sessions/\(sessionId)/turns/"
+                    + "\(turnID)/cancel"
+            ),
+            method: "POST",
+            contentType: "application/json",
+            body: Data("{}".utf8)
+        )
+    }
+
+    func stopQASession(
+        expectedSessionID: String
+    ) async throws -> QASessionResponse {
+        guard expectedSessionID == sessionId else {
+            throw GatewayClientError.staleSession
+        }
+        return try await request(
+            path: "/api/qa/sessions/\(sessionId)/stop",
+            method: "POST",
+            contentType: "application/json",
+            body: Data("{}".utf8)
+        )
     }
 
     private func request<T: Decodable>(

@@ -28,6 +28,14 @@ class CachedTTSAdapter:
     def synthesize_neutral(
         self, candidate: ExpressionCandidate
     ) -> TTSResult:
+        return self.synthesize_neutral_text(
+            candidate.text, language=candidate.language
+        )
+
+    def synthesize_neutral_text(
+        self, text: str, *, language: str | None
+    ) -> TTSResult:
+        del text, language
         if self._fail_neutral:
             return TTSResult(status="failed", error="simulated neutral TTS failure")
         return self._read_cache(self._neutral_audio_path, "neutral")

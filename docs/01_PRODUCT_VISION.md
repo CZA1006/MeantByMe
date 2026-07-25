@@ -127,4 +127,4 @@ MVP 不提供：
 
 ### Verified model adaptation
 
-累计足够 Gold 数据后训练个人 ASR Adapter / LoRA，使用影子模型评估、通过后升级并保留回滚。
+累计足够 Trusted 数据后训练个人 ASR Adapter / LoRA，使用影子模型评估、通过后升级并保留回滚。

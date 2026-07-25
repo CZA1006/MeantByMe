@@ -38,7 +38,7 @@ def test_ranker_and_memory_never_auto_select() -> None:
     assert harness.tts.personal_calls == 0
 
 
-def test_gold_outranks_silver_on_equal_text_match() -> None:
+def test_legacy_gold_and_silver_have_equal_trusted_weight() -> None:
     text = "I don't want to go tomorrow."
     gold = MemoryItem(
         id="gold-memory",
@@ -79,8 +79,9 @@ def test_gold_outranks_silver_on_equal_text_match() -> None:
         [silver_candidate, gold_candidate], [silver, gold]
     )
 
-    assert ranked[0].id == gold_candidate.id
-    assert any("gold" in reason for reason in ranked[0].ranking_reasons)
+    assert ranked[0].id == silver_candidate.id
+    assert "exact trusted phrase" in ranked[0].ranking_reasons
+    assert "trusted memory support" in ranked[0].ranking_reasons
 
 
 def test_memory_context_and_language_round_trip() -> None:

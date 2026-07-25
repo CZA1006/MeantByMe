@@ -8,6 +8,8 @@ from meantbyme.core.domain import (
     ExpressionCandidate,
     IntentProposal,
     MemoryItem,
+    QAConversationTurn,
+    QAResponse,
     TranscriptEvidence,
     TTSResult,
 )
@@ -36,6 +38,19 @@ class CommandIntentPort(Protocol):
         """Classify a command without authorizing voice or writing memory."""
 
 
+class QAPort(Protocol):
+    def respond(
+        self,
+        evidence: TranscriptEvidence,
+        history: list[QAConversationTurn],
+        memories: list[MemoryItem],
+        *,
+        language: str | None,
+        situation: str | None,
+    ) -> QAResponse:
+        """Interpret a fragment and answer without authorizing patient speech."""
+
+
 class TTSPort(Protocol):
     def synthesize_neutral(self, candidate: ExpressionCandidate) -> TTSResult:
         """Create a non-personal private readback for a candidate."""
@@ -44,3 +59,8 @@ class TTSPort(Protocol):
         self, expression: AuthorizedExpression
     ) -> TTSResult:
         """Synthesize personal voice from a one-time authorization object only."""
+
+    def synthesize_neutral_text(
+        self, text: str, *, language: str | None
+    ) -> TTSResult:
+        """Speak AI-owned text in a neutral voice only."""

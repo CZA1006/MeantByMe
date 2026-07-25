@@ -31,6 +31,7 @@ class StubGatewayState:
     personal_tts_failure: bool = False
     request_count: int = 0
     last_intent_payload: dict | None = None
+    last_qa_payload: dict | None = None
 
 
 class QuietThreadingHTTPServer(ThreadingHTTPServer):
@@ -111,6 +112,34 @@ class StubGateway:
                     request_payload = json.loads(body or b"{}")
                     state.last_intent_payload = request_payload
                     self._json(_intent_proposal(request_payload))
+                    return
+                if self.path == "/v1/qa/respond":
+                    request_payload = json.loads(body or b"{}")
+                    state.last_qa_payload = request_payload
+                    transcript = next(
+                        (
+                            result.get("transcript", "")
+                            for result in request_payload.get(
+                                "evidence", {}
+                            ).get("results", [])
+                            if result.get("status") == "success"
+                        ),
+                        "a question",
+                    )
+                    self._json(
+                        {
+                            "understood_question": transcript,
+                            "patient_supported_spans": [transcript],
+                            "ai_added_spans": [],
+                            "uncertainty": "medium_uncertainty",
+                            "should_clarify": False,
+                            "clarification_question": None,
+                            "answer": "This is the stub AI answer.",
+                            "risk_level": "ordinary",
+                            "status": "success",
+                            "error": None,
+                        }
+                    )
                     return
                 if self.path == "/v1/tts/synthesize":
                     payload = json.loads(body or b"{}")

@@ -59,7 +59,13 @@ class ProfileMemory(ProfileModel):
     id: str = Field(min_length=1, max_length=160)
     memory_type: Literal["semantic", "context"]
     verification_level: VerificationLevel
-    source: Literal["patient", "caregiver", "research_fixture"]
+    source: Literal[
+        "user_input",
+        "confirmed_expression",
+        "patient",
+        "caregiver",
+        "research_fixture",
+    ]
     text: str = Field(min_length=1, max_length=1000)
     language: str = Field(min_length=2, max_length=12)
     context: dict[str, Any] = Field(default_factory=dict)
@@ -70,18 +76,6 @@ class ProfileMemory(ProfileModel):
 
     @model_validator(mode="after")
     def enforce_provenance(self) -> "ProfileMemory":
-        if (
-            self.source == "caregiver"
-            and self.verification_level is not VerificationLevel.SILVER
-        ):
-            raise ValueError("caregiver memory must be Silver")
-        if self.verification_level is VerificationLevel.GOLD:
-            if self.source != "patient":
-                raise ValueError("Gold profile memory must come from patient")
-            if not self.confirmation_session_id:
-                raise ValueError(
-                    "Gold profile memory requires confirmation_session_id"
-                )
         if (
             self.verification_level is VerificationLevel.UNVERIFIED
             and self.prompt_eligible
@@ -218,17 +212,25 @@ def seed_profile_repository(
             "sensitivity": item.sensitivity.value,
             "prompt_eligible": item.prompt_eligible,
         }
+        trusted_level = (
+            VerificationLevel.UNVERIFIED
+            if item.verification_level is VerificationLevel.UNVERIFIED
+            else VerificationLevel.GOLD
+        )
         memory = MemoryItem(
             id=item.id,
             patient_id=patient_id,
             memory_type=MemoryType(item.memory_type),
-            verification_level=item.verification_level,
+            verification_level=trusted_level,
             text=item.text,
             language=item.language,
             context=context,
             usage_count=item.usage_count,
             last_used_at=timestamp,
-            confirmation_session_id=item.confirmation_session_id,
+            confirmation_session_id=(
+                item.confirmation_session_id
+                or f"explicit-profile-input:{item.id}"
+            ),
         )
         if memory.memory_type is MemoryType.CONTEXT:
             repository.add_context_memory(patient_id, memory)

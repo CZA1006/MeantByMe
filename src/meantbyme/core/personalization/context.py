@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from meantbyme.core.domain import MemoryItem, VerificationLevel
+from meantbyme.core.domain import MemoryItem
 
 
 def compose_situation(
@@ -9,19 +9,19 @@ def compose_situation(
     now: datetime,
     override: str | None,
 ) -> str | None:
-    if override:
-        return override
-
     rendered = []
     for memory in context_memories:
         if not memory.text:
             continue
         item = memory.text.strip()
-        if memory.verification_level is VerificationLevel.SILVER:
-            item = f"{item} (caregiver-provided)"
         rendered.append(item)
     if not rendered:
-        return None
+        return override
 
-    prefix = f"Today is {now:%A %Y-%m-%d}. Known patient context: "
-    return prefix + "; ".join(rendered)
+    profile = (
+        f"Today is {now:%A %Y-%m-%d}. Current user profile: "
+        + "; ".join(rendered)
+    )
+    if override:
+        return f"Current situation: {override} {profile}"
+    return profile

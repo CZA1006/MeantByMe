@@ -9,7 +9,7 @@
 - 识别意图:uncertainty routing + 候选生成
 - 用户交互:澄清 / 选择 / 确认闭环
 - 补全语言:AI completion(patient span vs AI-added span)
-- 记忆自进化:确认后写回 Gold + 个性化重排
+- 记忆自进化:明确保存后写回 Trusted + 个性化重排
 
 **音频输入:麦克风或 WAV 文件**(与硬件解耦)。
 

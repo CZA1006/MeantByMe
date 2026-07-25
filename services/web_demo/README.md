@@ -20,6 +20,12 @@ cannot write verified memory. It renders the runtime view model and sends
 patient commands. `patient_id` is selected by the server from the simulated
 profile and is never accepted from a client request.
 
+The BFF also exposes a separate `/api/qa/sessions` flow for private AI
+conversation. Its reconstructed questions and answers are temporary,
+low/medium uncertainty is answered directly, high uncertainty asks a natural
+clarification, and audio is synthesized only with neutral TTS. Cancelling a QA
+turn removes both sides of that turn from the session context.
+
 This is not the production cloud-memory architecture:
 
 - every session selects a structured simulated profile or the no-profile
@@ -138,8 +144,11 @@ longer uploaded WAV files before they can consume gateway capacity. PCM
 
 Profile Markdown must follow
 [`docs/PROFILE_TEST_BUNDLES.md`](../../docs/PROFILE_TEST_BUNDLES.md). Only its
-validated `meantbyme-profile` JSON block is imported. Gold, Silver, and
-unverified provenance remain distinct, and cloud mode requires explicit
-`cloud_processing_allowed`. Profiles created through the caregiver
-questionnaire are always stored as Silver caregiver context and cannot become
-patient-confirmed Gold memory.
+validated `meantbyme-profile` JSON block is imported. Explicit questionnaire
+input and explicit imports are trusted regardless of the operator's role;
+the existing final-confirm/reject/edit actions automatically update a
+confidence-scored expression-to-intent mapping, so there is no second
+**Remember** step. Legacy Gold/Silver values are read with equal trusted
+weight. Cloud mode still
+requires explicit `cloud_processing_allowed`, and profile import never grants
+personal-voice authority.

@@ -37,7 +37,10 @@ def test_full_cloud_golden_path_against_stub(tmp_path: Path) -> None:
     assert RuntimeEventType.EXPRESSION_SPOKEN.value in event_types
     assert event_types[-1] == RuntimeEventType.SESSION_COMPLETED.value
     assert state.last_intent_payload is not None
-    assert state.last_intent_payload["situation"] == situation
+    assert state.last_intent_payload["situation"].startswith(
+        f"Current situation: {situation}"
+    )
+    assert "Current user profile" in state.last_intent_payload["situation"]
 
 
 def test_personal_tts_failure_does_not_mark_spoken(tmp_path: Path) -> None:

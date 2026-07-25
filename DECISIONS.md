@@ -437,6 +437,39 @@ context relevance retrieval、测试文档。
 
 ---
 
+## D21 — 统一可信档案与反馈式动态记忆 🔴
+
+**产品调整（2026-07-25）：** 实际使用者可能是患者本人、家人或其他交流
+参与者，产品无法也无需把操作者固定建模为“患者 / 护工”。Gold / Silver
+身份分级会增加交互和实现复杂度，却不能稳定代表资料质量。
+
+**决定：**
+
+- 产品只展示 `trusted` 与 `unconfirmed`。当前使用者主动填写或明确导入的
+  稳定档案资料均为 Trusted，不再按操作者身份分级。
+- 历史 `gold` / `silver` 值继续可读，二者在检索、排序和 situation 组合中
+  完全同权；这是兼容存储，不再是产品语义。D17 的差异权重、D19/D20 的
+  caregiver=Silver 规则由本决策取代。
+- 最终表达确认本身就是正反馈，不再增加 `Remember` 二次确认；拒绝、全部
+  不对和修改候选是负反馈。
+- 反馈只更新“输入表达 → 已确认意图”的案例映射，不把 AI 文本自动推断成
+  稳定人物事实，也不扩大本次声音授权范围。
+- 映射保存向量、正负次数与置信度。负反馈降权快于正反馈增权，且只有超过
+  阈值的映射才参与跨 session 检索与排序。
+- 所有映射和反馈按 `profile_ref + profile_id/patient_id` 限定；反馈事件按
+  session 幂等，重试不得重复计数。
+- Profile import 只授予个性化资料信任，不得附带授予 personal voice
+  authorization。
+
+**理由：** 信任应来自可审计的用户动作，而不是系统猜测的角色身份。复用
+已有正确 / 错误确认可以避免交互负担；把“表达案例”与“稳定人物事实”分开，
+可以在持续学习的同时保持沉默不等于同意、拒绝不变偏好和跨用户隔离。
+
+**影响：** Profile bundle/import、ranker、context composer、Web Demo
+profile store/API/UI、demo fixtures、D17/D19/D20 文档与测试。
+
+---
+
 ## 决策汇总
 
 | ID | 主题 | 阻塞里程碑 1 | Owner | 状态 |
@@ -457,13 +490,14 @@ context relevance retrieval、测试文档。
 | D14 | Ranker 不自动选(断言) | 🔴 | Nick | ✅ 已冻结 |
 | D15 | 两层 consent 模型 | 🔴 | Nick | ✅ 已冻结 |
 | D16 | 高风险 strict 标志 | 🔴 | Nick | ✅ 已冻结 |
-| D17 | Gold 排序严格高于 Silver | 🔴 | Nick | ✅ 已冻结 |
+| D17 | Gold 排序严格高于 Silver | 🔴 | Nick | ↪ 被 D21 取代 |
 | D18 | CJK language-aware tokenization | 🔴 | Nick | ✅ 已冻结 |
 | D19 | Persistent Context-Memory + auto recall | 🔴 | Nick | ✅ 已冻结 |
 | D20 | Simulated Profile Test Bundle + minimum disclosure | 🔴 | Nick | ✅ 已冻结 |
+| D21 | Trusted 档案 + confirmation-gated evolution | 🔴 | Nick / Jiayi | ✅ 已冻结 |
 
 **开工前必须确认的阻塞项:** D1、D2、D4、D5(D3 的 schema 部分),及
-agent/runtime 的 D10–D20。全部已冻结。
+agent/runtime 的 D10–D21。全部已冻结。
 
 ---
 
@@ -480,3 +514,4 @@ agent/runtime 的 D10–D20。全部已冻结。
 | 2026-07-24 | D5/D16 | 补齐中文高风险确定性词表与 strict 确认覆盖 | Nick |
 | 2026-07-24 | D10 | 单路 ASR 内容丰富时改走 MEDIUM，tokens 仍保持 uncertain | Nick 确认 |
 | 2026-07-24 | D20 | 冻结结构化模拟画像、最小披露与有/无画像 A/B 测试规则 | Nick 确认 |
+| 2026-07-25 | D21 | 取消 Gold/Silver 产品分级，采用现有确认动作驱动动态表达记忆 | 产品调整 |

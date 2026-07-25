@@ -172,3 +172,49 @@ struct EarbudInterpretation: Decodable {
         case audioInputHash = "audio_input_hash"
     }
 }
+
+struct QAResult: Decodable {
+    let understoodQuestion: String
+    let patientSupportedSpans: [String]
+    let aiAddedSpans: [String]
+    let uncertainty: String
+    let shouldClarify: Bool
+    let clarificationQuestion: String?
+    let answer: String?
+    let riskLevel: String
+    let status: String
+    let error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case uncertainty, answer, status, error
+        case understoodQuestion = "understood_question"
+        case patientSupportedSpans = "patient_supported_spans"
+        case aiAddedSpans = "ai_added_spans"
+        case shouldClarify = "should_clarify"
+        case clarificationQuestion = "clarification_question"
+        case riskLevel = "risk_level"
+    }
+}
+
+struct QASessionResponse: Decodable {
+    let sessionId: String
+    let sessionToken: String?
+    let stopped: Bool
+    let turnCount: Int
+    let latestTurnId: String?
+    let response: QAResult?
+    let audioAvailable: Bool
+    let voiceMode: String
+    let memoryWriteEnabled: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case stopped, response
+        case sessionId = "session_id"
+        case sessionToken = "session_token"
+        case turnCount = "turn_count"
+        case latestTurnId = "latest_turn_id"
+        case audioAvailable = "audio_available"
+        case voiceMode = "voice_mode"
+        case memoryWriteEnabled = "memory_write_enabled"
+    }
+}

@@ -12,7 +12,14 @@ from meantbyme.adapters.profile import (
     load_profile_bundle,
     parse_profile_markdown,
 )
-from services.web_demo.profile_storage import ProfileSource, ProfileStore
+from meantbyme.core.domain import ExpressionMapping
+from meantbyme.core.personalization import (
+    MIN_RETRIEVAL_CONFIDENCE,
+)
+from services.web_demo.profile_storage import (
+    ProfileSource,
+    ProfileStore,
+)
 
 
 class DemoProfileRegistry:
@@ -119,16 +126,18 @@ class DemoProfileRegistry:
                     "simulated": False,
                     "id": f"ctx-{uuid4().hex}",
                     "memory_type": "context",
-                    "verification_level": "silver",
-                    "source": "caregiver",
+                    "verification_level": "gold",
+                    "source": "user_input",
                     "text": f"{title}：{text}",
                     "language": language,
                     "context": {
                         "kind": kind,
-                        "entry_method": "caregiver_questionnaire",
+                        "entry_method": "explicit_user_questionnaire",
                     },
                     "usage_count": 0,
-                    "confirmation_session_id": None,
+                    "confirmation_session_id": (
+                        f"explicit-profile-input:{patient_id}:{field_name}"
+                    ),
                     "sensitivity": "ordinary",
                     "prompt_eligible": True,
                 }
@@ -156,8 +165,8 @@ class DemoProfileRegistry:
         }
         markdown = (
             f"# {display_name} 的人物档案\n\n"
-            "档案由陪护者在 MeantByMe App 中填写；所有内容均按 "
-            "Silver 辅助上下文处理，不代表患者本人确认的意愿。\n\n"
+            "档案由当前使用者在 MeantByMe App 中明确输入，"
+            "作为可信个性化资料使用。\n\n"
             "```meantbyme-profile\n"
             f"{json.dumps(payload, ensure_ascii=False, indent=2)}\n"
             "```\n"
@@ -188,13 +197,23 @@ class DemoProfileRegistry:
                     "id": memory.id,
                     "text": memory.text,
                     "kind": str(memory.context.get("kind", "其他")),
-                    "verification_level": memory.verification_level.value,
+                    "trust_state": (
+                        "unconfirmed"
+                        if memory.verification_level.value == "unverified"
+                        else "trusted"
+                    ),
                     "source": memory.source,
                     "sensitivity": memory.sensitivity.value,
                     "prompt_eligible": memory.prompt_eligible,
                 }
                 for memory in profile.memories
             ],
+            "expression_mapping_count": len(
+                self._store.list_expression_mappings(
+                    profile_ref=profile_ref,
+                    profile_id=profile.profile_id,
+                )
+            ),
         }
 
     def resolve(self, profile_ref: str) -> ProfileBundle:
@@ -202,21 +221,81 @@ class DemoProfileRegistry:
         self._require_cloud_consent(profile)
         return profile
 
+    def record_expression_feedback(
+        self,
+        *,
+        profile_ref: str,
+        session_id: str,
+        input_text: str,
+        intent_text: str,
+        language: str,
+        confirmed: bool,
+    ) -> ExpressionMapping:
+        profile, _ = self._resolve_with_source(profile_ref)
+        return self._store.record_expression_feedback(
+            profile_ref=profile_ref,
+            profile_id=profile.profile_id,
+            session_id=session_id,
+            input_text=input_text,
+            intent_text=intent_text,
+            language=language,
+            confirmed=confirmed,
+        )
+
     def _resolve_with_source(
         self, profile_ref: str
     ) -> tuple[ProfileBundle, str]:
         profile = self._builtins.get(profile_ref)
         if profile is not None:
-            return profile, "built_in"
-        row = self._store.get_profile(profile_ref)
-        if row is None:
-            raise ProfileBundleError("profile not found")
-        return (
-            parse_profile_markdown(
+            source = "built_in"
+        else:
+            row = self._store.get_profile(profile_ref)
+            if row is None:
+                raise ProfileBundleError("profile not found")
+            profile = parse_profile_markdown(
                 row.markdown, max_bytes=self._max_profile_bytes
-            ),
-            row.source,
+            )
+            source = row.source
+        return self._with_expression_mappings(profile_ref, profile), source
+
+    def _with_expression_mappings(
+        self,
+        profile_ref: str,
+        profile: ProfileBundle,
+    ) -> ProfileBundle:
+        mappings = self._store.list_expression_mappings(
+            profile_ref=profile_ref,
+            profile_id=profile.profile_id,
+            min_confidence=MIN_RETRIEVAL_CONFIDENCE,
         )
+        if not mappings:
+            return profile
+        payload = profile.model_dump(mode="json")
+        for mapping in mappings:
+            payload["memories"].append(
+                {
+                    "simulated": profile.simulated,
+                    "id": mapping.mapping_id,
+                    "memory_type": "semantic",
+                    "verification_level": "gold",
+                    "source": "confirmed_expression",
+                    "text": mapping.intent_text,
+                    "language": mapping.language,
+                    "context": {
+                        "kind": "expression_mapping",
+                        "input_text": mapping.input_text,
+                        "embedding": mapping.embedding,
+                        "confidence": mapping.confidence,
+                        "positive_count": mapping.positive_count,
+                        "negative_count": mapping.negative_count,
+                    },
+                    "usage_count": mapping.positive_count,
+                    "confirmation_session_id": mapping.last_session_id,
+                    "sensitivity": "ordinary",
+                    "prompt_eligible": True,
+                }
+            )
+        return ProfileBundle.model_validate(payload)
 
     def _persist(
         self,
@@ -244,21 +323,23 @@ class DemoProfileRegistry:
     def _demote_unverified_upload(
         self, profile: ProfileBundle
     ) -> tuple[ProfileBundle, str]:
-        """An uploaded file cannot self-assert patient confirmation."""
+        """Treat explicit profile import as trusted, excluding voice consent."""
         payload = profile.model_dump(mode="json")
         payload["voice_consent"] = None
         for memory in payload["memories"]:
-            memory["verification_level"] = "silver"
-            memory["source"] = "caregiver"
-            memory["confirmation_session_id"] = None
+            if memory["verification_level"] != "unverified":
+                memory["verification_level"] = "gold"
+                memory["source"] = "user_input"
+                memory["confirmation_session_id"] = (
+                    f"explicit-profile-import:{memory['id']}"
+                )
             memory["context"] = {
                 **memory.get("context", {}),
-                "entry_method": "markdown_import",
+                "entry_method": "explicit_markdown_import",
             }
         normalized = (
             f"# {profile.patient.display_name} 的人物档案\n\n"
-            "该文件通过 App 导入；其中内容作为 Silver 辅助上下文，"
-            "不代表患者本人已确认的意愿。\n\n"
+            "该文件由当前使用者明确导入，作为可信个性化资料使用。\n\n"
             "```meantbyme-profile\n"
             f"{json.dumps(payload, ensure_ascii=False, indent=2)}\n"
             "```\n"

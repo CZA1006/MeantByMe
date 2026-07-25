@@ -79,7 +79,7 @@ def _valid_payload() -> dict:
     }
 
 
-def test_profile_bundle_requires_simulated_provenance_and_gold_confirmation() -> None:
+def test_profile_bundle_requires_simulated_provenance_and_prompt_trust() -> None:
     payload = _valid_payload()
     del payload["simulated"]
     with pytest.raises(ProfileBundleError, match="simulated"):
@@ -87,17 +87,13 @@ def test_profile_bundle_requires_simulated_provenance_and_gold_confirmation() ->
 
     payload = _valid_payload()
     payload["memories"][0]["confirmation_session_id"] = None
-    with pytest.raises(ProfileBundleError, match="confirmation_session_id"):
-        parse_profile_markdown(_document(payload))
+    parsed = parse_profile_markdown(_document(payload))
+    assert parsed.memories[0].confirmation_session_id is None
 
     payload = _valid_payload()
-    payload["memories"][0]["source"] = "caregiver"
-    payload["memories"][0]["text"] = "PRIVATE PROFILE TEXT"
-    with pytest.raises(
-        ProfileBundleError, match="caregiver memory must be Silver"
-    ) as error:
-        parse_profile_markdown(_document(payload))
-    assert "PRIVATE PROFILE TEXT" not in str(error.value)
+    payload["memories"][0]["source"] = "user_input"
+    parsed = parse_profile_markdown(_document(payload))
+    assert parsed.memories[0].source == "user_input"
 
 
 def test_profile_import_seeds_only_verified_prompt_eligible_memory() -> None:

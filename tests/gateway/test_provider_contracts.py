@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from services.gateway.app import IntentRequest
+from services.gateway.app import IntentRequest, QARequest
 from services.gateway.config import GatewaySettings
 from services.gateway.provider_http import (
     ProviderRequestError,
@@ -105,6 +105,21 @@ def _proposal() -> dict:
     }
 
 
+def _qa_response() -> dict:
+    return {
+        "understood_question": "Why is the sky blue?",
+        "patient_supported_spans": ["sky", "blue"],
+        "ai_added_spans": ["Why is the"],
+        "uncertainty": "medium_uncertainty",
+        "should_clarify": False,
+        "clarification_question": None,
+        "answer": "Air scatters blue light more strongly.",
+        "risk_level": "ordinary",
+        "status": "success",
+        "error": None,
+    }
+
+
 def test_stepfun_messages_uses_anthropic_shape_without_thinking() -> None:
     response = _json_response(
         {
@@ -142,6 +157,92 @@ def test_stepfun_messages_uses_anthropic_shape_without_thinking() -> None:
     user_content = json.loads(call["payload"]["messages"][0]["content"])
     assert user_content["situation"] == "A friend asked about tomorrow."
     assert result["requires_confirmation"] is True
+
+
+def test_qa_uses_multiturn_messages_and_strict_response_contract() -> None:
+    response = _json_response(
+        {
+            "content": [
+                {"type": "text", "text": json.dumps(_qa_response())}
+            ]
+        }
+    )
+    client = RecordingProviderClient([response])
+    service = CloudProviderService(
+        GatewaySettings(
+            stepfun_api_key="test-key",
+            intent_provider="stepfun",
+        ),
+        client=client,
+    )
+
+    result = service.respond_qa(
+        {
+            "evidence": {"results": []},
+            "memories": [],
+            "history": [
+                {
+                    "turn_id": "turn-1",
+                    "role": "user",
+                    "content": "What about color?",
+                    "source": "ai_interpreted_patient_question",
+                    "patient_supported_spans": ["color"],
+                    "ai_added_spans": ["What about"],
+                },
+                {
+                    "turn_id": "turn-1",
+                    "role": "assistant",
+                    "content": "Which object do you mean?",
+                    "source": "ai_response",
+                    "patient_supported_spans": [],
+                    "ai_added_spans": [],
+                },
+            ],
+            "language": "en",
+            "situation": None,
+        }
+    )
+
+    messages = client.calls[0]["payload"]["messages"]
+    assert [message["role"] for message in messages] == [
+        "user",
+        "assistant",
+        "user",
+    ]
+    prior = json.loads(messages[0]["content"])
+    assert prior["kind"] == "unverified_interpreted_patient_question"
+    assert result["answer"].startswith("Air scatters")
+
+
+def test_qa_model_cannot_smuggle_operational_action() -> None:
+    invalid = {**_qa_response(), "speak_now": True}
+    client = RecordingProviderClient(
+        [
+            _json_response(
+                {
+                    "content": [
+                        {"type": "text", "text": json.dumps(invalid)}
+                    ]
+                }
+            )
+        ]
+    )
+    service = CloudProviderService(
+        GatewaySettings(stepfun_api_key="test-key"), client=client
+    )
+
+    with pytest.raises(
+        ProviderContractError, match="QA response failed domain validation"
+    ):
+        service.respond_qa(
+            {
+                "evidence": {},
+                "memories": [],
+                "history": [],
+                "language": "en",
+                "situation": None,
+            }
+        )
 
 
 def test_command_interpretation_is_constrained_to_intent_only() -> None:
@@ -471,4 +572,23 @@ def test_gateway_intent_request_accepts_situation_and_forbids_extra() -> None:
             memories=[],
             confirmed_context={},
             speak=True,
+        )
+
+
+def test_gateway_qa_request_is_bounded_and_forbids_extra() -> None:
+    request = QARequest(
+        patient_id="david_demo",
+        session_id="qa-1",
+        language="en",
+        evidence={},
+        history=[],
+        memories=[],
+    )
+    assert request.history == []
+    with pytest.raises(ValidationError):
+        QARequest(
+            patient_id="david_demo",
+            session_id="qa-1",
+            evidence={},
+            authorize=True,
         )

@@ -29,7 +29,7 @@ evidence → propose → stop → patient confirms → authorize → act
 -Verified Memory 写入资格；
 -事件和 Receipt。
 
-LLM 不负责选择候选、跳过确认、授权声音、写 Gold Memory 或解释无反应。
+LLM 不负责选择候选、跳过确认、授权声音、写 Trusted Memory 或解释无反应。
 
 ## State machine
 
@@ -83,7 +83,7 @@ REQUEST_HELP
 
 ```python
 assert not personal_voice_used_without_confirmation
-assert not gold_memory_written_without_confirmation
+assert not trusted_memory_written_without_confirmation
 assert silence_is_not_consent
 assert caregiver_context_is_not_patient_confirmation
 assert rejected_candidate_is_not_preference

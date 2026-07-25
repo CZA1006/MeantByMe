@@ -14,6 +14,11 @@ from meantbyme.core.domain import (
     RuntimeEvent,
     VerificationLevel,
 )
+from meantbyme.core.personalization.dynamic_memory import (
+    MIN_RETRIEVAL_CONFIDENCE,
+    cosine_similarity,
+    embed_expression,
+)
 from meantbyme.core.personalization.text import normalize, tokenize
 
 
@@ -258,9 +263,33 @@ class SQLiteRepository:
             """,
             (patient_id,),
         ).fetchall()
-        query_tokens = set(tokenize(" ".join(fragments)))
+        query_text = " ".join(fragments)
+        query_tokens = set(tokenize(query_text))
+        query_embedding = embed_expression(query_text)
         memories = []
         for row in rows:
+            context = json.loads(row["context"]) if row["context"] else {}
+            if context.get("kind") == "expression_mapping":
+                confidence = float(context.get("confidence", 0.0))
+                if confidence < MIN_RETRIEVAL_CONFIDENCE:
+                    continue
+                embedding = context.get("embedding")
+                if not isinstance(embedding, list):
+                    continue
+                vector_similarity = cosine_similarity(
+                    query_embedding,
+                    [float(value) for value in embedding],
+                )
+                if vector_similarity <= 0:
+                    continue
+                if vector_similarity >= 0.70:
+                    similarity = "high"
+                elif vector_similarity >= 0.25:
+                    similarity = "medium"
+                else:
+                    similarity = "low"
+                memories.append(self._row_to_memory(row, similarity))
+                continue
             text_tokens = set(tokenize(row["text"] or ""))
             if query_tokens and query_tokens.issubset(text_tokens):
                 similarity = "high"
@@ -285,19 +314,6 @@ class SQLiteRepository:
         if not memory.text or not memory.text.strip():
             raise ValueError("Context memory requires human-readable text")
 
-        source = str(memory.context.get("source", "")).casefold()
-        if (
-            source == "caregiver"
-            and memory.verification_level is not VerificationLevel.SILVER
-        ):
-            raise ValueError("Caregiver context must remain Silver")
-        if (
-            memory.verification_level is VerificationLevel.GOLD
-            and source not in {"patient", "seed"}
-        ):
-            raise ValueError(
-                "Only patient-confirmed or seed context can enter Gold memory"
-            )
         self._validate_gold(memory)
 
         existing = self._connection.execute(
@@ -364,7 +380,6 @@ class SQLiteRepository:
               AND memory_type='context'
               AND verification_level IN ('gold','silver')
             ORDER BY
-              CASE verification_level WHEN 'gold' THEN 0 ELSE 1 END,
               last_used_at DESC
             """,
             (patient_id,),
@@ -400,12 +415,7 @@ class SQLiteRepository:
             overlap = len(query_tokens & memory_tokens)
             if overlap == 0:
                 continue
-            level_priority = (
-                1
-                if memory.verification_level is VerificationLevel.GOLD
-                else 0
-            )
-            scored.append((overlap, level_priority, -position, memory))
+            scored.append((overlap, 0, -position, memory))
 
         scored.sort(key=lambda item: item[:3], reverse=True)
         selected = scored if limit is None else scored[:limit]

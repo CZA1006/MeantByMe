@@ -116,18 +116,18 @@
     },
     {
       "simulated": true,
-      "id": "ctx-lin-yue-caregiver-fatigue",
+      "id": "ctx-lin-yue-fatigue",
       "memory_type": "context",
-      "verification_level": "silver",
-      "source": "caregiver",
-      "text": "Her husband reports that speech becomes harder when she is tired.",
+      "verification_level": "gold",
+      "source": "user_input",
+      "text": "Speech becomes harder when she is tired.",
       "language": "en",
       "context": {
-        "kind": "caregiver_observation",
+        "kind": "communication_pattern",
         "tags": ["fatigue", "speech"]
       },
       "usage_count": 0,
-      "confirmation_session_id": null,
+      "confirmation_session_id": "simulated-lin-yue-confirmation-006",
       "sensitivity": "sensitive",
       "prompt_eligible": true
     },

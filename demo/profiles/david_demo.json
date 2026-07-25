@@ -63,15 +63,15 @@
         "id": "ctx-david-window-afternoon",
         "text": "Prefers the living-room window open in the afternoon.",
         "language": "en",
-        "verification_level": "silver",
-        "confirmations": 0,
+        "verification_level": "gold",
+        "confirmations": 1,
         "context": {
           "kind": "preference",
           "detail": "living-room window open",
           "time_pattern": "daily:afternoon",
-          "source": "caregiver"
+          "source": "user_input"
         },
-        "confirmation_session_id": null
+        "confirmation_session_id": "simulated-context-confirmation-003"
       }
     ]
   },

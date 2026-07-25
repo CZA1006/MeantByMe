@@ -47,6 +47,78 @@ def test_go_back_reverses_only_reversible_stages() -> None:
         send(blocked.runtime, PatientCommandType.GO_BACK)
 
 
+def test_cancel_expression_discards_round_without_speaking_or_memory() -> None:
+    harness = make_harness(with_memory=False)
+    drive_to_final_review(harness)
+    selected_text = harness.runtime.session.selected_candidate().text
+    assert (
+        PatientCommandType.CANCEL_EXPRESSION
+        in harness.runtime.view_model().allowed_actions
+    )
+
+    send(
+        harness.runtime,
+        PatientCommandType.CANCEL_EXPRESSION,
+        actor=CommandActor.CAREGIVER,
+    )
+
+    session = harness.runtime.session
+    assert session.stage is SessionStage.EXPRESSION_CANCELLED
+    assert session.evidence is None
+    assert session.candidates == []
+    assert session.selected_candidate_id is None
+    assert session.patient_confirmed is False
+    assert session.voice_authorized is False
+    assert session.authorized_expression is None
+    assert harness.tts.personal_calls == 0
+    assert harness.repository.count_memory_writes("david_demo") == 0
+    assert harness.repository.get_receipt(
+        "david_demo", session.session_id
+    ) is None
+    cancelled = next(
+        event
+        for event in harness.runtime.events
+        if event.event_type is RuntimeEventType.EXPRESSION_CANCELLED
+    )
+    assert cancelled.payload == {
+        "actor": "caregiver",
+        "cancelled_from": "final_review",
+        "authorized_output_blocked": True,
+        "memory_write_blocked": True,
+    }
+    assert selected_text not in session.confirmed_context.rejected_texts
+
+
+def test_cancel_after_authorization_revokes_this_expression_scope() -> None:
+    harness = make_harness(with_memory=False)
+    drive_to_final_review(harness)
+    final_confirm(harness)
+    assert harness.runtime.session.stage is SessionStage.VOICE_AUTHORIZED
+
+    send(harness.runtime, PatientCommandType.CANCEL_EXPRESSION)
+
+    assert harness.runtime.session.stage is SessionStage.EXPRESSION_CANCELLED
+    assert harness.runtime.session.patient_confirmed is False
+    assert harness.runtime.session.voice_authorized is False
+    assert harness.runtime.session.authorization_scope is None
+    assert harness.runtime.session.authorized_expression is None
+    assert harness.repository.count_memory_writes("david_demo") == 0
+
+
+def test_completed_expression_cannot_be_cancelled_retroactively() -> None:
+    harness = make_harness(with_memory=False)
+    drive_to_final_review(harness)
+    final_confirm(harness)
+    playback_completed(harness)
+    assert harness.runtime.session.stage is SessionStage.COMPLETED
+
+    with pytest.raises(CommandRejected, match="unspoken active expression"):
+        send(harness.runtime, PatientCommandType.CANCEL_EXPRESSION)
+
+    assert harness.runtime.session.stage is SessionStage.COMPLETED
+    assert harness.repository.count_memory_writes("david_demo") == 1
+
+
 class HighRiskIntent(MockIntentAdapter):
     def propose(
         self, evidence, memories, confirmed_context, situation=None

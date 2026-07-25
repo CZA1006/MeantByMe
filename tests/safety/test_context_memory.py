@@ -67,7 +67,7 @@ def _context_memory(
     )
 
 
-def test_context_storage_is_patient_scoped_and_gold_precedes_silver() -> None:
+def test_context_storage_is_patient_scoped_and_uses_recency() -> None:
     harness = make_harness(with_memory=False)
     gold = _context_memory(
         memory_id="context-gold",
@@ -91,13 +91,13 @@ def test_context_storage_is_patient_scoped_and_gold_precedes_silver() -> None:
     assert [
         memory.id
         for memory in harness.repository.search_context_memories(PATIENT_ID)
-    ] == ["context-gold", "context-silver"]
+    ] == ["context-silver", "context-gold"]
     assert harness.repository.search_context_memories("other_patient") == []
     with pytest.raises(PermissionError, match="Cross-patient"):
         harness.repository.add_context_memory("other_patient", gold)
 
 
-def test_caregiver_context_stays_silver_and_gold_requires_confirmation() -> None:
+def test_trusted_context_is_actor_agnostic_and_requires_confirmation() -> None:
     harness = make_harness(with_memory=False)
     caregiver = _context_memory(
         memory_id="caregiver-context",
@@ -107,17 +107,16 @@ def test_caregiver_context_stays_silver_and_gold_requires_confirmation() -> None
     )
     harness.repository.add_context_memory(PATIENT_ID, caregiver)
 
-    with pytest.raises(ValueError, match="Caregiver context"):
-        harness.repository.add_context_memory(
-            PATIENT_ID,
-            caregiver.model_copy(
-                update={
-                    "id": "invalid-caregiver-gold",
-                    "verification_level": VerificationLevel.GOLD,
-                    "confirmation_session_id": "not-patient-confirmed",
-                }
-            ),
-        )
+    harness.repository.add_context_memory(
+        PATIENT_ID,
+        caregiver.model_copy(
+            update={
+                "id": "explicit-user-context",
+                "verification_level": VerificationLevel.GOLD,
+                "confirmation_session_id": "explicit-input-session",
+            }
+        ),
+    )
     with pytest.raises(ValueError, match="Gold memory requires"):
         harness.repository.add_context_memory(
             PATIENT_ID,
@@ -126,17 +125,6 @@ def test_caregiver_context_stays_silver_and_gold_requires_confirmation() -> None
                 text="Daughter Mia visits on weekends.",
                 level=VerificationLevel.GOLD,
                 source="patient",
-            ),
-        )
-    with pytest.raises(ValueError, match="enter Gold"):
-        harness.repository.add_context_memory(
-            PATIENT_ID,
-            _context_memory(
-                memory_id="ai-gold",
-                text="Inferred routine.",
-                level=VerificationLevel.GOLD,
-                source="ai",
-                confirmation_session_id="forged-confirmation",
             ),
         )
     with pytest.raises(ValueError, match="cannot change automatically"):
@@ -167,8 +155,13 @@ def test_caregiver_context_stays_silver_and_gold_requires_confirmation() -> None
         )
 
     stored = harness.repository.search_context_memories(PATIENT_ID)
-    assert len(stored) == 1
-    assert stored[0].verification_level is VerificationLevel.SILVER
+    assert len(stored) == 2
+    assert {
+        memory.verification_level for memory in stored
+    } == {
+        VerificationLevel.GOLD,
+        VerificationLevel.SILVER,
+    }
 
 
 def test_semantic_search_never_returns_context_rows() -> None:
@@ -194,7 +187,7 @@ def test_semantic_search_never_returns_context_rows() -> None:
     assert [memory.id for memory in contexts] == [context.id]
 
 
-def test_compose_situation_is_deterministic_and_tags_silver() -> None:
+def test_compose_situation_is_deterministic_without_actor_tiers() -> None:
     gold = _context_memory(
         memory_id="context-gold",
         text="Sees the doctor every Sunday morning.",
@@ -216,14 +209,18 @@ def test_compose_situation_is_deterministic_and_tags_silver() -> None:
             now=FIXED_NOW,
             override="Manual situation wins.",
         )
-        == "Manual situation wins."
+        == (
+            "Current situation: Manual situation wins. "
+            "Today is Sunday 2026-07-26. Current user profile: "
+            "Sees the doctor every Sunday morning.; 女儿周末来访。"
+        )
     )
     assert compose_situation(
         [gold, silver], now=FIXED_NOW, override=None
     ) == (
-        "Today is Sunday 2026-07-26. Known patient context: "
+        "Today is Sunday 2026-07-26. Current user profile: "
         "Sees the doctor every Sunday morning.; "
-        "女儿周末来访。 (caregiver-provided)"
+        "女儿周末来访。"
     )
 
 
@@ -247,7 +244,7 @@ def test_runtime_auto_recalls_context_without_authorizing_or_ranking_it() -> Non
     drive_to_route(harness)
 
     assert harness.runtime.session.situation == (
-        "Today is Sunday 2026-07-26. Known patient context: "
+        "Today is Sunday 2026-07-26. Current user profile: "
         "Plans tomorrow with daughter Mia."
     )
     assert intent.last_situation == harness.runtime.session.situation
@@ -276,7 +273,7 @@ def test_runtime_auto_recalls_context_without_authorizing_or_ranking_it() -> Non
     assert harness.tts.personal_calls == 0
 
 
-def test_runtime_context_retrieval_excludes_irrelevant_rows_and_limits_results() -> None:
+def test_runtime_sends_current_profile_without_keyword_filtering() -> None:
     harness = make_harness(with_memory=False, session_id="context-relevance")
     relevant = [
         _context_memory(
@@ -304,13 +301,13 @@ def test_runtime_context_retrieval_excludes_irrelevant_rows_and_limits_results()
         for item in harness.runtime.events
         if item.event_type is RuntimeEventType.CONTEXT_RETRIEVED
     )
-    assert event.payload["count"] == 5
-    assert "irrelevant-window" not in event.payload["memory_ids"]
+    assert event.payload["count"] == 8
+    assert "irrelevant-window" in event.payload["memory_ids"]
     assert harness.runtime.session.situation is not None
-    assert "window open" not in harness.runtime.session.situation
+    assert "window open" in harness.runtime.session.situation
 
 
-def test_demo_profile_seeds_gold_and_caregiver_silver_context() -> None:
+def test_demo_profile_seeds_all_explicit_context_as_trusted() -> None:
     repository, patient, _, _, _ = _seed_demo_repository(":memory:")
 
     context_memories = repository.search_context_memories(patient["id"])
@@ -322,11 +319,12 @@ def test_demo_profile_seeds_gold_and_caregiver_silver_context() -> None:
     ] == [
         VerificationLevel.GOLD,
         VerificationLevel.GOLD,
-        VerificationLevel.SILVER,
+        VerificationLevel.GOLD,
     ]
-    caregiver = context_memories[-1]
-    assert caregiver.context["source"] == "caregiver"
-    assert caregiver.confirmation_session_id is None
+    assert all(
+        memory.confirmation_session_id is not None
+        for memory in context_memories
+    )
 
 
 def test_context_memory_does_not_change_expression_hash() -> None:

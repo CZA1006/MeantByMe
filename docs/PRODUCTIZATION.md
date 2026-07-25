@@ -86,7 +86,8 @@ The client is a **thin renderer**. It never contains agent logic.
 **Send** a `PatientCommand`: `start_capture`, `stop_capture`,
 `confirm_heard_content`, `reject_heard_content`, `select_category`,
 `select_candidate`, `none_of_these`, `final_confirm`, `edit_completion`,
-`go_back`, `stop`, `switch_input_method`, `request_help` — with
+`go_back`, `cancel_expression`, `stop`, `switch_input_method`,
+`request_help` — with
 `confirmation_method` and payload. **Only render buttons in `allowed_actions`.**
 
 **UI must-NOTs (enforced by architecture; do not work around):**
@@ -97,8 +98,8 @@ The client is a **thin renderer**. It never contains agent logic.
 - Always keep **Stop / Back / None of these / Switch input** visible and reachable.
 - `final_confirm` for high-risk (`strict`) or `L3` candidates must carry the extra
   confirmation flags the server requires (surface the stricter step to the patient).
-- Show provenance: patient-supported spans vs AI-added spans; caregiver-provided
-  context labeled as such; personal-voice status always visible.
+- Show provenance: user-supported spans vs AI-added spans; inferred profile
+  facts remain visibly pending until saved; personal-voice status stays visible.
 
 **Accessibility (required):** large targets, full keyboard reachability, optional
 scanning, adjustable timeouts, reduced motion, repeatable playback, no
@@ -123,8 +124,8 @@ Wrap the existing runtime; keep the safety logic server-side. Suggested endpoint
 - **Identity & isolation:** authenticate the patient; derive `patient_id`
   server-side; never trust a client-supplied `patient_id`. All store access stays
   `patient_id`-scoped (D4). Cross-patient access must be impossible.
-- **Store:** migrate SQLite → Postgres (same schema/constraints: Gold CHECK,
-  patient FKs, idempotent writes). **Encrypt patient memory + audio at rest.**
+- **Store:** migrate SQLite → Postgres (same patient scope, confirmation
+  evidence, and idempotent writes). **Encrypt patient memory + audio at rest.**
 - **Gateway:** deploy it (see §7) with **caller auth** and rate-limiting; secrets
   only in server env / secret manager; redacted logs (no raw audio, no secrets, no
   high-risk plaintext).
@@ -136,9 +137,11 @@ Wrap the existing runtime; keep the safety logic server-side. Suggested endpoint
 ## 6. Consent & privacy re-architecture (required for Option B)
 Moving memory server-side changes the promise; make it explicit and revocable:
 - Consent scopes (per `docs/08`): mic capture, cloud ASR, **cloud memory storage**,
-  voice cloning, personal-voice output, future training, export, caregiver sharing.
-- Caregiver-provided context stays **Silver** and visibly distinct from
-  patient-confirmed Gold (D19) — never auto-upgraded.
+  voice cloning, personal-voice output, future training, export, profile sharing.
+- Explicit profile input is trusted regardless of operator role. Existing
+  confirm/reject/edit actions update a confidence-gated expression mapping;
+  this learned mapping is not automatically promoted to a stable profile fact
+  (D21).
 - Right to export and delete verified memory; revoking a consent scope takes
   effect immediately (e.g. revoking voice consent blocks personal voice — already
   enforced by D15).

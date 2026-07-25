@@ -30,12 +30,14 @@ from meantbyme.core.domain import (
     PatientCommandType,
 )
 from meantbyme.core.runtime import CommandRejected, ProviderContractError
+from meantbyme.core.qa import QARuntimeError
 
 from services.web_demo.config import WebDemoSettings
 from services.web_demo.profile_storage import ProfileStorageError
 from services.web_demo.sessions import (
     DemoSession,
     DemoSessionStore,
+    QADemoSession,
     SIMULATED_NOTICE,
 )
 
@@ -139,6 +141,17 @@ def create_app(
                 status_code=404, detail="demo session not found"
             ) from error
 
+    def resolve_qa_session(
+        session_id: str,
+        x_demo_session: str = Header(default=""),
+    ) -> QADemoSession:
+        try:
+            return active_store.get_qa(session_id, x_demo_session)
+        except KeyError as error:
+            raise HTTPException(
+                status_code=404, detail="QA session not found"
+            ) from error
+
     @application.get("/")
     async def index() -> FileResponse:
         return FileResponse(static_root / "index.html")
@@ -179,6 +192,116 @@ def create_app(
         response = session.response()
         response["session_token"] = session.access_token
         return response
+
+    @application.post(
+        "/api/qa/sessions", dependencies=[Depends(require_demo_access)]
+    )
+    async def create_qa_session(
+        payload: CreateSessionRequest,
+    ) -> dict[str, Any]:
+        try:
+            session = await asyncio.to_thread(
+                active_store.create_qa,
+                profile_ref=payload.profile_ref,
+                language=payload.language,
+            )
+        except (ProfileBundleError, ValueError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except RuntimeError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        response = session.response()
+        response["session_token"] = session.access_token
+        return response
+
+    @application.post(
+        "/api/qa/sessions/{session_id}/turns/{turn_id}",
+        dependencies=[Depends(require_demo_access)],
+    )
+    async def ask_qa(
+        request: Request,
+        turn_id: str,
+        primary_transcript_b64: str | None = Header(
+            default=None,
+            alias="X-Viaim-Primary-Transcript-B64",
+        ),
+        session: QADemoSession = Depends(resolve_qa_session),
+    ) -> dict[str, Any]:
+        content_type = request.headers.get("content-type", "").split(";", 1)[0]
+        if content_type not in {"audio/wav", "audio/x-wav"}:
+            raise HTTPException(status_code=415, detail="WAV audio required")
+        wav_bytes = await request.body()
+        if not wav_bytes or len(wav_bytes) > active_settings.max_audio_bytes:
+            raise HTTPException(status_code=413, detail="invalid audio size")
+        try:
+            duration_seconds = AudioStore.duration_seconds(wav_bytes)
+            if duration_seconds > active_settings.max_audio_seconds:
+                raise HTTPException(
+                    status_code=413,
+                    detail=(
+                        "audio must be "
+                        f"{active_settings.max_audio_seconds:g} "
+                        "seconds or shorter"
+                    ),
+                )
+            primary_transcript = (
+                _decode_transcript_header(primary_transcript_b64)
+                if primary_transcript_b64 is not None
+                else None
+            )
+            return await asyncio.to_thread(
+                session.ask,
+                wav_bytes=wav_bytes,
+                primary_transcript=primary_transcript,
+                turn_id=turn_id,
+            )
+        except AudioStoreError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        except QARuntimeError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @application.post(
+        "/api/qa/sessions/{session_id}/turns/{turn_id}/cancel",
+        dependencies=[Depends(require_demo_access)],
+    )
+    async def cancel_qa_turn(
+        turn_id: str,
+        session: QADemoSession = Depends(resolve_qa_session),
+    ) -> dict[str, Any]:
+        return await asyncio.to_thread(session.cancel_turn, turn_id)
+
+    @application.post(
+        "/api/qa/sessions/{session_id}/stop",
+        dependencies=[Depends(require_demo_access)],
+    )
+    async def stop_qa_session(
+        session: QADemoSession = Depends(resolve_qa_session),
+    ) -> dict[str, Any]:
+        return await asyncio.to_thread(session.stop)
+
+    @application.get(
+        "/api/qa/sessions/{session_id}/turns/{turn_id}/audio",
+        dependencies=[Depends(require_demo_access)],
+    )
+    async def get_qa_audio(
+        turn_id: str,
+        session: QADemoSession = Depends(resolve_qa_session),
+    ) -> Response:
+        result = session.audio(turn_id)
+        if result is None or result.status != "success":
+            raise HTTPException(status_code=404, detail="audio not available")
+        if result.audio_bytes:
+            return Response(
+                content=result.audio_bytes,
+                media_type=result.media_type or "audio/wav",
+                headers={"Cache-Control": "no-store"},
+            )
+        if result.audio_path:
+            return FileResponse(
+                result.audio_path,
+                media_type=result.media_type or "audio/wav",
+                headers={"Cache-Control": "no-store"},
+            )
+        raise HTTPException(status_code=404, detail="audio not available")
 
     @application.get(
         "/api/profiles", dependencies=[Depends(require_demo_access)]
@@ -331,7 +454,12 @@ def create_app(
             actor=(
                 CommandActor.SYSTEM
                 if payload.command in playback_commands
-                else CommandActor.PATIENT
+                else (
+                    CommandActor.CAREGIVER
+                    if payload.command
+                    is PatientCommandType.CANCEL_EXPRESSION
+                    else CommandActor.PATIENT
+                )
             ),
         )
         try:

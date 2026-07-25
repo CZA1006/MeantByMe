@@ -33,6 +33,18 @@ class GatewayTTSAdapter:
             }
         )
 
+    def synthesize_neutral_text(
+        self, text: str, *, language: str | None
+    ) -> TTSResult:
+        del language
+        return self._synthesize(
+            {
+                "text": text,
+                "mode": "neutral",
+                "scope": "ai_response",
+            }
+        )
+
     def synthesize_personal(
         self, expression: AuthorizedExpression
     ) -> TTSResult:

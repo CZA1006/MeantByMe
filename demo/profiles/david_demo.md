@@ -93,8 +93,8 @@ profile. Narrative outside the JSON block is never sent to a provider.
       "simulated": true,
       "id": "ctx-david-window-afternoon",
       "memory_type": "context",
-      "verification_level": "silver",
-      "source": "caregiver",
+      "verification_level": "gold",
+      "source": "user_input",
       "text": "Prefers the living-room window open in the afternoon.",
       "language": "en",
       "context": {
@@ -103,7 +103,7 @@ profile. Narrative outside the JSON block is never sent to a provider.
         "time_pattern": "daily:afternoon"
       },
       "usage_count": 0,
-      "confirmation_session_id": null,
+      "confirmation_session_id": "simulated-context-confirmation-003",
       "sensitivity": "ordinary",
       "prompt_eligible": true
     }

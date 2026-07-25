@@ -107,6 +107,8 @@ class MeantByMeRuntime:
         try:
             if command.command is PatientCommandType.STOP:
                 self._handle_stop()
+            elif command.command is PatientCommandType.CANCEL_EXPRESSION:
+                self._handle_cancel_expression(command)
             elif command.command is PatientCommandType.SWITCH_INPUT_METHOD:
                 self._emit(
                     RuntimeEventType.INPUT_METHOD_SWITCH_REQUESTED,
@@ -284,8 +286,10 @@ class MeantByMeRuntime:
         try:
             context_memories = self._repository.search_context_memories(
                 self.session.patient_id,
-                evidence.stable_fragments + evidence.uncertain_fragments,
-                limit=5,
+                # The model must receive the current user's trusted structured
+                # profile even when this utterance has no keyword overlap.
+                fragments=None,
+                limit=8,
             )
         except Exception as error:
             context_memories = []
@@ -958,7 +962,11 @@ class MeantByMeRuntime:
             )
 
     def _handle_stop(self) -> None:
-        if self.session.stage in {SessionStage.COMPLETED, SessionStage.STOPPED}:
+        if self.session.stage in {
+            SessionStage.COMPLETED,
+            SessionStage.EXPRESSION_CANCELLED,
+            SessionStage.STOPPED,
+        }:
             raise CommandRejected("Session is already terminal")
         self._move(
             SessionStage.STOPPED,
@@ -967,6 +975,58 @@ class MeantByMeRuntime:
             authorization_scope=None,
         )
         self._emit(RuntimeEventType.SESSION_STOPPED, {})
+
+    def _handle_cancel_expression(self, command: PatientCommand) -> None:
+        cancellable_stages = {
+            SessionStage.READY,
+            SessionStage.CAPTURING,
+            SessionStage.AUDIO_CAPTURED,
+            SessionStage.TRANSCRIBING,
+            SessionStage.EVIDENCE_EXTRACTED,
+            SessionStage.MEMORY_RETRIEVING,
+            SessionStage.HEARD_CONTENT_REVIEW,
+            SessionStage.UNCERTAINTY_ASSESSED,
+            SessionStage.CATEGORY_CLARIFICATION,
+            SessionStage.CANDIDATE_SELECTION,
+            SessionStage.FINAL_REVIEW,
+            SessionStage.PATIENT_CONFIRMED,
+            SessionStage.VOICE_AUTHORIZED,
+        }
+        if self.session.stage not in cancellable_stages:
+            raise CommandRejected(
+                "Only an unspoken active expression may be cancelled"
+            )
+        cancelled_from = self.session.stage
+        self._move(
+            SessionStage.EXPRESSION_CANCELLED,
+            evidence=None,
+            retrieved_memories=[],
+            candidates=[],
+            selected_candidate_id=None,
+            patient_confirmed=False,
+            confirmation_method=None,
+            voice_authorized=False,
+            authorization_scope=None,
+            confirmed_context=ConfirmedContext(),
+            previous_stage=None,
+            audio_id=None,
+            audio_input_hash=None,
+            neutral_readback_path=None,
+            authorized_expression=None,
+            playback_id=None,
+            playback_completed_at=None,
+            playback_output_channel=None,
+            receipt_id=None,
+        )
+        self._emit(
+            RuntimeEventType.EXPRESSION_CANCELLED,
+            {
+                "actor": command.actor.value,
+                "cancelled_from": cancelled_from.value,
+                "authorized_output_blocked": True,
+                "memory_write_blocked": True,
+            },
+        )
 
     def _generate_candidates(self) -> None:
         evidence = self._require_evidence()
@@ -1254,8 +1314,25 @@ class MeantByMeRuntime:
             ],
         }
         actions = list(stage_actions.get(self.session.stage, []))
+        if self.session.stage in {
+            SessionStage.READY,
+            SessionStage.CAPTURING,
+            SessionStage.AUDIO_CAPTURED,
+            SessionStage.TRANSCRIBING,
+            SessionStage.EVIDENCE_EXTRACTED,
+            SessionStage.MEMORY_RETRIEVING,
+            SessionStage.HEARD_CONTENT_REVIEW,
+            SessionStage.UNCERTAINTY_ASSESSED,
+            SessionStage.CATEGORY_CLARIFICATION,
+            SessionStage.CANDIDATE_SELECTION,
+            SessionStage.FINAL_REVIEW,
+            SessionStage.PATIENT_CONFIRMED,
+            SessionStage.VOICE_AUTHORIZED,
+        }:
+            actions.append(PatientCommandType.CANCEL_EXPRESSION)
         if self.session.stage not in {
             SessionStage.COMPLETED,
+            SessionStage.EXPRESSION_CANCELLED,
             SessionStage.STOPPED,
         }:
             actions.extend(
