@@ -71,13 +71,17 @@ struct DemoResponse: Decodable {
 }
 
 struct EarbudInterpretation: Decodable {
+    let interpretationId: String
     let intent: String
     let consensus: Bool
     let stage: String
+    let promptId: String
     let audioInputHash: String
 
     enum CodingKeys: String, CodingKey {
         case intent, consensus, stage
+        case interpretationId = "interpretation_id"
+        case promptId = "prompt_id"
         case audioInputHash = "audio_input_hash"
     }
 }

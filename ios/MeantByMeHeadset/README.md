@@ -13,21 +13,39 @@ Viaim microphone
   -> Web Demo session audio endpoint with primary evidence header
   -> existing Runtime / Gateway / StepFun flow
 
-Viaim primary command ASR + command PCM
-  -> Web Demo earbud interpretation endpoint
-  -> independent cloud ASR + constrained command model
-  -> affirm/reject/repeat/stop/back/unknown only
-  -> iOS sends an existing Runtime command
+Local PCM/text activity
+  -> 8 seconds without detected speech ends one expression
+  -> Web Demo generates candidates
+  -> first candidate is privately read through the earbuds
+  -> a short earbud-microphone capture interprets the patient's response
+  -> “是/嗯/没错” confirms; “不是/不对/换一个” reads another candidate
+  -> confirmed candidate is played by the iPhone speaker in a neutral voice
+  -> a fresh capture round starts automatically
 ```
 
 No raw PCM is written to iPhone storage. Unconfirmed candidates are not shown
 on the caregiver screen. Private prompts are played only after iOS verifies an
-active headphone/Bluetooth audio route.
+active headphone/Bluetooth audio route. The current expression flow does not
+enroll, authorize, synthesize, fetch, or play a cloned patient voice.
 
-Personal TTS is not treated as spoken. The app reports a unique
+The app reports a unique
 `playback_completed` callback only after `AVAudioPlayer` finishes on the iPhone
 speaker; playback errors report `playback_failed`, which prevents Receipt and
 verified-memory writes.
+
+## Voice confirmation
+
+After the full private candidate readback and a private instruction, the app
+starts a separate command capture. Once speech is detected, about 1.2 seconds
+of silence ends that response. The server interprets the Viaim primary text
+and an independent PCM-derived ASR result. An affirmation is accepted only
+when both interpretations agree and the server-issued interpretation record
+matches the active candidate and private prompt.
+
+`stop` is fail-safe and may stop the flow when either reliable interpretation
+detects it. Reject, repeat, and unknown do not authorize playback. High-risk or
+L3 candidates require two distinct private readbacks and two distinct
+affirmation recordings.
 
 ## Prepare the project
 
@@ -72,7 +90,17 @@ verified-memory writes.
   simulator acceptance target.
 - Pair the Viaim headset in iOS Bluetooth settings before pressing Connect.
 - Keep the app in the foreground for the MVP.
+- Speak once, then remain silent for 8 seconds. The timer is refreshed by
+  Viaim partial/final text or local PCM energy, so unclear speech can still
+  delimit an expression even when no text is produced.
+- The 8-second trailing silence is used only as an end-of-expression signal.
+  Before upload, the app removes that trailing silence while retaining small
+  pre/post-roll padding around detected speech.
 - Confirm that an unconfirmed readback never falls back to the iPhone speaker.
+- After the private readback, say “是”, “嗯”, or “没错” to confirm.
+- Say “不是”, “不对”, or “换一个” to reject and hear another candidate.
+- If the two interpretations disagree or the response is unclear, the app
+  privately repeats the candidate instead of playing it publicly.
 - Disconnecting the headset must stop the flow without confirming.
 
 The companion app currently implements expression mode. QA remains visible but

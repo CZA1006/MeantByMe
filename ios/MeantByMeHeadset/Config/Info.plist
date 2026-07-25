@@ -31,7 +31,11 @@
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>用于连接 Viaim 智能耳机。</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>用于采集患者主动表达和确认语音。</string>
+	<string>用于通过 Viaim 耳机采集患者主动表达和语音确认。</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-central</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

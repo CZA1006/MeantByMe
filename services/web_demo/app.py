@@ -240,6 +240,8 @@ def create_app(
         playback_commands = {
             PatientCommandType.PLAYBACK_COMPLETED,
             PatientCommandType.PLAYBACK_FAILED,
+            PatientCommandType.PROCEED_WITHOUT_HEARD_CONFIRMATION,
+            PatientCommandType.PREPARE_CANDIDATE_READBACK,
         }
         patient_command = PatientCommand(
             command=payload.command,
@@ -253,6 +255,14 @@ def create_app(
             ),
         )
         try:
+            if (
+                payload.command
+                is PatientCommandType.CONFIRM_NEUTRAL_PLAYBACK
+            ):
+                return await asyncio.to_thread(
+                    session.handle_voice_confirmation,
+                    patient_command,
+                )
             return await asyncio.to_thread(session.handle, patient_command)
         except CommandRejected as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
@@ -269,6 +279,11 @@ def create_app(
         request: Request,
         primary_transcript_b64: str = Header(
             alias="X-Viaim-Primary-Transcript-B64"
+        ),
+        prompt_id: str = Header(
+            min_length=1,
+            max_length=128,
+            alias="X-MeantByMe-Prompt-ID",
         ),
         mock_secondary_transcript_b64: str | None = Header(
             default=None,
@@ -301,6 +316,7 @@ def create_app(
                 session.interpret_earbud_command,
                 wav_bytes=wav_bytes,
                 primary_transcript=primary_transcript,
+                prompt_id=prompt_id,
                 mock_secondary_transcript=mock_secondary_transcript,
             )
         except AudioStoreError as error:

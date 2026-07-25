@@ -272,6 +272,7 @@ def test_earbud_command_requires_two_matching_interpretations(
                 "X-Viaim-Primary-Transcript-B64": base64.b64encode(
                     b"yes"
                 ).decode("ascii"),
+                "X-MeantByMe-Prompt-ID": "prompt-agreed",
                 "X-Mock-Secondary-Transcript-B64": base64.b64encode(
                     b"yes"
                 ).decode("ascii"),
@@ -286,6 +287,7 @@ def test_earbud_command_requires_two_matching_interpretations(
                 "X-Viaim-Primary-Transcript-B64": base64.b64encode(
                     b"yes"
                 ).decode("ascii"),
+                "X-MeantByMe-Prompt-ID": "prompt-disagreed",
                 "X-Mock-Secondary-Transcript-B64": base64.b64encode(
                     b"no"
                 ).decode("ascii"),
@@ -294,11 +296,108 @@ def test_earbud_command_requires_two_matching_interpretations(
         )
 
     assert agreed.status_code == 200
+    assert agreed.json()["interpretation_id"].startswith(
+        "voice-interpretation-"
+    )
     assert agreed.json()["intent"] == "affirm"
     assert agreed.json()["consensus"] is True
     assert disagreed.status_code == 200
     assert disagreed.json()["intent"] == "unknown"
     assert disagreed.json()["consensus"] is False
+
+
+def test_voice_confirmation_uses_server_issued_evidence_and_neutral_audio(
+    tmp_path: Path,
+) -> None:
+    with TestClient(create_app(settings=_settings(tmp_path))) as client:
+        created, headers = _create_session(client)
+        session_id = created["session"]["session_id"]
+        _command(client, session_id, headers, "start_capture")
+        _command(client, session_id, headers, "stop_capture")
+        candidates = _command(
+            client,
+            session_id,
+            headers,
+            "proceed_without_heard_confirmation",
+        )
+        candidate = candidates["session"]["candidates"][0]
+        review = _command(
+            client,
+            session_id,
+            headers,
+            "prepare_candidate_readback",
+            payload={"candidate_id": candidate["id"]},
+        )
+        assert review["session"]["stage"] == SessionStage.FINAL_REVIEW
+
+        forged = client.post(
+            f"/api/sessions/{session_id}/commands",
+            headers=headers,
+            json={
+                "command": "confirm_neutral_playback",
+                "confirmation_method": "voice_semantic",
+                "payload": {
+                    "private_readback_completed": True,
+                    "voice_confirmation_evidence": {
+                        "intent": "affirm",
+                        "consensus": True,
+                        "prompt_id": "forged",
+                        "audio_hash": "forged",
+                    },
+                },
+            },
+        )
+        assert forged.status_code == 409
+
+        interpreted = client.post(
+            f"/api/sessions/{session_id}/earbud/interpret",
+            headers={
+                **headers,
+                "Content-Type": "audio/wav",
+                "X-Viaim-Primary-Transcript-B64": base64.b64encode(
+                    b"yes"
+                ).decode("ascii"),
+                "X-MeantByMe-Prompt-ID": "private-prompt-one",
+                "X-Mock-Secondary-Transcript-B64": base64.b64encode(
+                    b"yes"
+                ).decode("ascii"),
+            },
+            content=wav_bytes(duration_seconds=1),
+        )
+        assert interpreted.status_code == 200
+        confirmed = _command(
+            client,
+            session_id,
+            headers,
+            "confirm_neutral_playback",
+            payload={
+                "private_readback_completed": True,
+                "voice_interpretation_ids": [
+                    interpreted.json()["interpretation_id"]
+                ],
+            },
+            confirmation_method="voice_semantic",
+        )
+        assert confirmed["session"]["stage"] == (
+            SessionStage.PATIENT_CONFIRMED
+        )
+        assert confirmed["audio"]["personal_available"] is False
+
+        completed = _command(
+            client,
+            session_id,
+            headers,
+            "playback_completed",
+            payload={
+                "playback_id": "neutral-voice-confirmed-001",
+                "output_channel": "iphone_speaker",
+            },
+        )
+
+    assert completed["session"]["stage"] == SessionStage.COMPLETED
+    assert completed["receipt"]["confirmation_method"] == "voice_semantic"
+    assert completed["receipt"]["voice_profile_id"] is None
+    assert completed["receipt"]["authorization_scope"] is None
 
 
 def test_cloud_mode_fails_closed_without_demo_token(tmp_path: Path) -> None:

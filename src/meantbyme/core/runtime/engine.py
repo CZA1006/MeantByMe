@@ -125,14 +125,34 @@ class MeantByMeRuntime:
                 self._handle_confirm_heard_content(command)
             elif command.command is PatientCommandType.REJECT_HEARD_CONTENT:
                 self._handle_reject_heard_content(command)
+            elif (
+                command.command
+                is PatientCommandType.PROCEED_WITHOUT_HEARD_CONFIRMATION
+            ):
+                self._handle_proceed_without_heard_confirmation(command)
             elif command.command is PatientCommandType.SELECT_CATEGORY:
                 self._handle_select_category(command)
+            elif (
+                command.command
+                is PatientCommandType.PREPARE_CANDIDATE_READBACK
+            ):
+                self._handle_prepare_candidate_readback(command)
             elif command.command is PatientCommandType.SELECT_CANDIDATE:
                 self._handle_select_candidate(command)
+            elif (
+                command.command
+                is PatientCommandType.REJECT_CURRENT_CANDIDATE
+            ):
+                self._handle_reject_current_candidate(command)
             elif command.command is PatientCommandType.NONE_OF_THESE:
                 self._handle_none_of_these(command)
             elif command.command is PatientCommandType.FINAL_CONFIRM:
                 self._handle_final_confirm(command)
+            elif (
+                command.command
+                is PatientCommandType.CONFIRM_NEUTRAL_PLAYBACK
+            ):
+                self._handle_confirm_neutral_playback(command)
             elif command.command is PatientCommandType.PLAYBACK_COMPLETED:
                 self._handle_playback_completed(command)
             elif command.command is PatientCommandType.PLAYBACK_FAILED:
@@ -157,7 +177,10 @@ class MeantByMeRuntime:
 
     def view_model(self) -> SessionViewModel:
         allowed = self._allowed_actions()
-        if self.session.stage is SessionStage.SPOKEN:
+        if (
+            self.session.stage is SessionStage.SPOKEN
+            and self.session.voice_authorized
+        ):
             personal_voice_status = "used"
         elif self.session.stage is SessionStage.VOICE_AUTHORIZED:
             personal_voice_status = "authorized"
@@ -370,6 +393,30 @@ class MeantByMeRuntime:
             failure_status="heard_content_rejected",
         )
 
+    def _handle_proceed_without_heard_confirmation(
+        self, command: PatientCommand
+    ) -> None:
+        """Generate candidates from evidence without claiming ASR was confirmed."""
+        self._require_system(command)
+        self._require_stage(SessionStage.HEARD_CONTENT_REVIEW)
+        evidence = self._require_evidence()
+        base_band = assess_uncertainty(evidence)
+        self._move(SessionStage.UNCERTAINTY_ASSESSED)
+        self._emit(
+            RuntimeEventType.UNCERTAINTY_ASSESSED,
+            {
+                "evidence_band": base_band.value,
+                "effective_route": "candidate_selection",
+                "memory_downgraded": False,
+                "heard_content_patient_confirmed": False,
+            },
+        )
+        self._generate_candidates()
+        self._move(
+            SessionStage.CANDIDATE_SELECTION,
+            previous_stage=SessionStage.HEARD_CONTENT_REVIEW,
+        )
+
     def _handle_select_category(self, command: PatientCommand) -> None:
         self._require_patient(command)
         self._require_stage(SessionStage.CATEGORY_CLARIFICATION)
@@ -388,6 +435,44 @@ class MeantByMeRuntime:
             SessionStage.CANDIDATE_SELECTION,
             previous_stage=SessionStage.CATEGORY_CLARIFICATION,
         )
+
+    def _handle_prepare_candidate_readback(
+        self, command: PatientCommand
+    ) -> None:
+        """Prepare one candidate for private review without selecting intent."""
+        self._require_system(command)
+        self._require_stage(SessionStage.CANDIDATE_SELECTION)
+        candidate = self._candidate_by_id(command.payload.get("candidate_id"))
+        risk = classify_risk(candidate.text, candidate.risk_level)
+        self._replace(
+            selected_candidate_id=candidate.id,
+            risk_level=risk,
+            strict=risk is RiskLevel.HIGH_RISK,
+            patient_confirmed=False,
+            confirmation_method=None,
+            neutral_readback_path=None,
+        )
+        self._move(SessionStage.FINAL_REVIEW)
+        readback = self._tts.synthesize_neutral(candidate)
+        if readback.status == "success":
+            self._replace(
+                neutral_readback_path=readback.audio_path,
+                failure_status=None,
+            )
+            self._emit(
+                RuntimeEventType.PRIVATE_READBACK_READY,
+                {
+                    "voice": "neutral",
+                    "candidate_id": candidate.id,
+                    "presentation_only": True,
+                },
+            )
+        else:
+            self._replace(failure_status="neutral_tts_failed")
+            self._emit(
+                RuntimeEventType.TTS_FAILED,
+                {"voice": "neutral", "error": readback.error},
+            )
 
     def _handle_select_candidate(self, command: PatientCommand) -> None:
         self._require_patient(command)
@@ -442,6 +527,78 @@ class MeantByMeRuntime:
                 {"voice": "neutral", "error": readback.error},
             )
 
+    def _handle_confirm_neutral_playback(
+        self, command: PatientCommand
+    ) -> None:
+        self._require_patient(command)
+        self._require_stage(SessionStage.FINAL_REVIEW)
+        if (
+            command.confirmation_method
+            is not ConfirmationMethod.VOICE_SEMANTIC
+        ):
+            raise CommandRejected(
+                "Neutral public playback requires semantic voice confirmation"
+            )
+        if command.payload.get("private_readback_completed") is not True:
+            raise CommandRejected(
+                "Full private readback must complete before confirmation"
+            )
+        candidate = self.session.selected_candidate()
+        if candidate is None:
+            raise CommandRejected("No privately reviewed candidate is active")
+        if self.session.failure_status == "neutral_tts_failed":
+            raise CommandRejected("Neutral readback audio is unavailable")
+        risk = classify_risk(candidate.text, candidate.risk_level)
+        strict = risk is RiskLevel.HIGH_RISK
+        evidence = command.payload.get("voice_confirmation_evidence")
+        if not isinstance(evidence, dict):
+            raise CommandRejected(
+                "Voice confirmation evidence is required"
+            )
+        if (
+            evidence.get("intent") != "affirm"
+            or evidence.get("consensus") is not True
+            or not isinstance(evidence.get("prompt_id"), str)
+            or not evidence["prompt_id"].strip()
+            or not isinstance(evidence.get("audio_hash"), str)
+            or not evidence["audio_hash"].strip()
+        ):
+            raise CommandRejected(
+                "Voice confirmation evidence is not an agreed affirmation"
+            )
+        if (
+            strict or candidate.source_level == "L3"
+        ):
+            if (
+                command.payload.get("additional_voice_confirmation")
+                is not True
+            ):
+                raise CommandRejected(
+                    "High-risk or L3 expression requires another "
+                    "voice confirmation"
+                )
+            self._require_distinct_voice_confirmation_evidence(command)
+        self._move(
+            SessionStage.PATIENT_CONFIRMED,
+            patient_confirmed=True,
+            confirmation_method=command.confirmation_method,
+            risk_level=risk,
+            strict=strict,
+            voice_authorized=False,
+            authorization_scope=None,
+            authorized_expression=None,
+            failure_status=None,
+        )
+        self._emit(
+            RuntimeEventType.FINAL_CONFIRMATION_RECEIVED,
+            {
+                "method": command.confirmation_method.value,
+                "strict": strict,
+                "actor": command.actor.value,
+                "output_voice": "neutral",
+            },
+        )
+
     def _handle_none_of_these(self, command: PatientCommand) -> None:
         self._require_patient(command)
         if self.session.stage not in {
@@ -478,6 +635,43 @@ class MeantByMeRuntime:
             neutral_readback_path=None,
         )
         self._generate_candidates()
+
+    def _handle_reject_current_candidate(
+        self, command: PatientCommand
+    ) -> None:
+        self._require_patient(command)
+        self._require_stage(SessionStage.FINAL_REVIEW)
+        candidate = self.session.selected_candidate()
+        if candidate is None:
+            raise CommandRejected("No current candidate is available to reject")
+        self._repository.record_rejected_candidate(
+            self.session.patient_id,
+            candidate.id,
+            candidate.text,
+            self.session.session_id,
+        )
+        rejected_texts = list(self.session.confirmed_context.rejected_texts)
+        if candidate.text not in rejected_texts:
+            rejected_texts.append(candidate.text)
+        remaining = [
+            item for item in self.session.candidates
+            if item.id != candidate.id
+        ]
+        self._move(
+            SessionStage.CANDIDATE_SELECTION,
+            candidates=remaining,
+            selected_candidate_id=None,
+            patient_confirmed=False,
+            confirmation_method=None,
+            strict=False,
+            risk_level=RiskLevel.ORDINARY,
+            neutral_readback_path=None,
+            confirmed_context=self.session.confirmed_context.model_copy(
+                update={"rejected_texts": rejected_texts}
+            ),
+        )
+        if not remaining:
+            self._generate_candidates()
 
     def _handle_final_confirm(self, command: PatientCommand) -> None:
         self._require_patient(command)
@@ -602,14 +796,31 @@ class MeantByMeRuntime:
             raise CommandRejected(
                 "A different playback already completed this expression"
             )
-        self._require_stage(SessionStage.VOICE_AUTHORIZED)
-        if self.session.failure_status == "personal_tts_failed":
-            raise CommandRejected("Personal TTS did not produce playable audio")
-        if (
-            not self.session.voice_authorized
-            or self.session.authorized_expression is None
-        ):
-            raise CommandRejected("Expression is not authorized for playback")
+        personal_playback = (
+            self.session.stage is SessionStage.VOICE_AUTHORIZED
+        )
+        neutral_playback = (
+            self.session.stage is SessionStage.PATIENT_CONFIRMED
+            and self.session.confirmation_method
+            is ConfirmationMethod.VOICE_SEMANTIC
+            and not self.session.voice_authorized
+        )
+        if not personal_playback and not neutral_playback:
+            raise CommandRejected(
+                "Playback completion requires confirmed playable audio"
+            )
+        if personal_playback:
+            if self.session.failure_status == "personal_tts_failed":
+                raise CommandRejected(
+                    "Personal TTS did not produce playable audio"
+                )
+            if (
+                not self.session.voice_authorized
+                or self.session.authorized_expression is None
+            ):
+                raise CommandRejected(
+                    "Expression is not authorized for playback"
+                )
         output_channel = command.payload.get("output_channel")
         if output_channel not in {"iphone_speaker", "browser_speaker"}:
             raise CommandRejected(
@@ -644,7 +855,13 @@ class MeantByMeRuntime:
 
     def _handle_playback_failed(self, command: PatientCommand) -> None:
         self._require_system(command)
-        self._require_stage(SessionStage.VOICE_AUTHORIZED)
+        if self.session.stage not in {
+            SessionStage.PATIENT_CONFIRMED,
+            SessionStage.VOICE_AUTHORIZED,
+        }:
+            raise CommandRejected(
+                "Playback failure requires confirmed playable audio"
+            )
         playback_id = self._playback_id(command)
         output_channel = command.payload.get("output_channel")
         if output_channel not in {"iphone_speaker", "browser_speaker"}:
@@ -804,8 +1021,16 @@ class MeantByMeRuntime:
             selected_candidate_id=candidate.id,
             patient_confirmed=True,
             confirmation_method=method,
-            voice_profile_id=self.session.voice_profile_id,
-            authorization_scope="this_expression",
+            voice_profile_id=(
+                self.session.voice_profile_id
+                if self.session.voice_authorized
+                else None
+            ),
+            authorization_scope=(
+                "this_expression"
+                if self.session.voice_authorized
+                else None
+            ),
             output_channel=self.session.playback_output_channel,
             playback_id=self.session.playback_id,
             playback_completed_at=self.session.playback_completed_at,
@@ -990,6 +1215,7 @@ class MeantByMeRuntime:
             SessionStage.HEARD_CONTENT_REVIEW: [
                 PatientCommandType.CONFIRM_HEARD_CONTENT,
                 PatientCommandType.REJECT_HEARD_CONTENT,
+                PatientCommandType.PROCEED_WITHOUT_HEARD_CONFIRMATION,
             ],
             SessionStage.CATEGORY_CLARIFICATION: [
                 PatientCommandType.SELECT_CATEGORY,
@@ -997,13 +1223,20 @@ class MeantByMeRuntime:
             ],
             SessionStage.CANDIDATE_SELECTION: [
                 PatientCommandType.SELECT_CANDIDATE,
+                PatientCommandType.PREPARE_CANDIDATE_READBACK,
                 PatientCommandType.NONE_OF_THESE,
                 PatientCommandType.GO_BACK,
+            ],
+            SessionStage.PATIENT_CONFIRMED: [
+                PatientCommandType.PLAYBACK_COMPLETED,
+                PatientCommandType.PLAYBACK_FAILED,
             ],
             SessionStage.FINAL_REVIEW: [
                 PatientCommandType.SELECT_CANDIDATE,
                 PatientCommandType.FINAL_CONFIRM,
                 PatientCommandType.EDIT_COMPLETION,
+                PatientCommandType.REJECT_CURRENT_CANDIDATE,
+                PatientCommandType.CONFIRM_NEUTRAL_PLAYBACK,
                 PatientCommandType.NONE_OF_THESE,
                 PatientCommandType.GO_BACK,
             ],

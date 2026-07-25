@@ -67,6 +67,7 @@ final class AudioRouter: NSObject {
         player?.stop()
         player = nil
         completion = nil
+        deactivateAudioSession()
     }
 
     private func configurePrivateRoute() throws {
@@ -92,7 +93,15 @@ final class AudioRouter: NSObject {
         let callback = completion
         completion = nil
         player = nil
+        deactivateAudioSession()
         callback?(success)
+    }
+
+    private func deactivateAudioSession() {
+        try? AVAudioSession.sharedInstance().setActive(
+            false,
+            options: .notifyOthersOnDeactivation
+        )
     }
 }
 

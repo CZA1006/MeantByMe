@@ -60,10 +60,16 @@ class PatientCommandType(StrEnum):
     STOP_CAPTURE = "stop_capture"
     CONFIRM_HEARD_CONTENT = "confirm_heard_content"
     REJECT_HEARD_CONTENT = "reject_heard_content"
+    PROCEED_WITHOUT_HEARD_CONFIRMATION = (
+        "proceed_without_heard_confirmation"
+    )
     SELECT_CATEGORY = "select_category"
+    PREPARE_CANDIDATE_READBACK = "prepare_candidate_readback"
     SELECT_CANDIDATE = "select_candidate"
+    REJECT_CURRENT_CANDIDATE = "reject_current_candidate"
     NONE_OF_THESE = "none_of_these"
     FINAL_CONFIRM = "final_confirm"
+    CONFIRM_NEUTRAL_PLAYBACK = "confirm_neutral_playback"
     PLAYBACK_COMPLETED = "playback_completed"
     PLAYBACK_FAILED = "playback_failed"
     EDIT_COMPLETION = "edit_completion"

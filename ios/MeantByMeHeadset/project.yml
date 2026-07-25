@@ -27,7 +27,9 @@ targets:
         LSRequiresIPhoneOS: true
         NSBluetoothAlwaysUsageDescription: 用于连接 Viaim 智能耳机并接收患者语音。
         NSBluetoothPeripheralUsageDescription: 用于连接 Viaim 智能耳机。
-        NSMicrophoneUsageDescription: 用于采集患者主动表达和确认语音。
+        NSMicrophoneUsageDescription: 用于通过 Viaim 耳机采集患者主动表达和语音确认。
+        UIBackgroundModes:
+          - bluetooth-central
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

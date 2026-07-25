@@ -56,7 +56,11 @@ ALLOWED_TRANSITIONS: dict[SessionStage, frozenset[SessionStage]] = {
         }
     ),
     SessionStage.PATIENT_CONFIRMED: frozenset(
-        {SessionStage.VOICE_AUTHORIZED, SessionStage.STOPPED}
+        {
+            SessionStage.VOICE_AUTHORIZED,
+            SessionStage.SPOKEN,
+            SessionStage.STOPPED,
+        }
     ),
     SessionStage.VOICE_AUTHORIZED: frozenset(
         {SessionStage.SPOKEN, SessionStage.STOPPED}

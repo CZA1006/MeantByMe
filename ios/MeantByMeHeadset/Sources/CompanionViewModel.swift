@@ -6,17 +6,24 @@ final class CompanionViewModel: ObservableObject {
     @Published var mode: CompanionMode = .expression
     @Published private(set) var sessionStarted = false
     @Published private(set) var sessionStatus = "等待陪护者开始"
-    @Published private(set) var safetyStatus = "患者声音未授权"
+    @Published private(set) var safetyStatus = "仅使用系统中性音"
     @Published var errorMessage: String?
 
     let headset = ViaimHeadsetService()
     private let audioRouter = AudioRouter()
     private var gateway: GatewayClient?
     private var response: DemoResponse?
-    private var stopTask: Task<Void, Never>?
-    private var promptContext: PromptContext = .none
+    private var silenceTask: Task<Void, Never>?
+    private var captureProcessingTask: Task<Void, Never>?
+    private var safetyAbortInProgress = false
+    private var activeSessionID: String?
+    private var stoppedSessionRecoveryAttempted = false
+    private var currentCandidate: Candidate?
+    private var privateReadbackCompleted = false
+    private var additionalVoiceConfirmationRequired = false
+    private var firstConfirmationEvidence: VoiceCommandEvidence?
     private var currentPromptID = ""
-    private var candidateIndex = 0
+    private var cancellables: Set<AnyCancellable> = []
 
     var headsetConnected: Bool { headset.connected }
     var headsetStatus: String { headset.status }
@@ -27,11 +34,15 @@ final class CompanionViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
-        headset.onPrimaryFinal = { [weak self] _, purpose in
-            self?.scheduleCaptureStop(purpose)
+        headset.onSpeechActivity = { [weak self] purpose in
+            self?.scheduleSilenceBoundary(purpose)
         }
         headset.onCaptureFinished = { [weak self] capture in
-            Task { await self?.handleCapture(capture) }
+            guard let self else { return }
+            self.captureProcessingTask?.cancel()
+            self.captureProcessingTask = Task {
+                await self.handleCapture(capture)
+            }
         }
         headset.onSafetyInterruption = { [weak self] reason in
             self?.abortForHardwareSafety(reason)
@@ -41,365 +52,496 @@ final class CompanionViewModel: ObservableObject {
         }.store(in: &cancellables)
     }
 
-    private var cancellables: Set<AnyCancellable> = []
-
     func connectHeadset() {
         headset.initializeAndConnect()
     }
 
     func startCompanion() async {
-        guard let gateway, headset.connected else { return }
+        guard gateway != nil, headset.connected else { return }
+        guard !sessionStarted, !safetyAbortInProgress else { return }
         guard mode == .expression else {
-            errorMessage = "当前队友后端尚未提供问答接口，本版本先完成“替患者表达”真机链路。"
+            errorMessage = "问答模式尚未接入；本版本先实现“替患者表达”。"
             return
         }
+        sessionStarted = true
+        safetyStatus = "候选仅在耳机播放；语音确认后以中性音外放"
         do {
-            let created = try await gateway.createSession()
-            response = created
-            sessionStarted = true
-            sessionStatus = "会话已开始，正在等待患者表达"
-            safetyStatus = "所有候选只在耳机中私密朗读"
-            let capturing = try await gateway.command("start_capture")
-            response = capturing
-            headset.startCapture(.expression)
+            try await beginNextExpressionRound()
         } catch {
             fail(error)
         }
     }
 
     func stopCompanion() async {
-        stopTask?.cancel()
+        guard !safetyAbortInProgress else { return }
+        safetyAbortInProgress = true
+        let sessionIDToStop = activeSessionID
+        silenceTask?.cancel()
+        captureProcessingTask?.cancel()
+        activeSessionID = nil
+        sessionStatus = "正在结束陪伴并丢弃未完成的表达…"
         audioRouter.stop()
         headset.stopCapture()
-        if let gateway {
-            _ = try? await gateway.command("stop")
+        if let gateway, let sessionIDToStop {
+            _ = try? await gateway.command(
+                "stop",
+                expectedSessionID: sessionIDToStop
+            )
         }
         sessionStarted = false
-        sessionStatus = "会话已结束"
-        safetyStatus = "患者声音未授权"
+        safetyAbortInProgress = false
+        resetRoundState()
+        sessionStatus = "陪伴已结束"
+        safetyStatus = "仅使用系统中性音"
     }
 
-    private func scheduleCaptureStop(_ purpose: CapturePurpose) {
-        stopTask?.cancel()
-        stopTask = Task {
-            let delay: UInt64 = purpose == .expression ? 2_500_000_000 : 900_000_000
+    private func beginNextExpressionRound() async throws {
+        guard let gateway, sessionStarted, !safetyAbortInProgress else {
+            return
+        }
+        silenceTask?.cancel()
+        captureProcessingTask?.cancel()
+        resetRoundState()
+        activeSessionID = nil
+        let created = try await gateway.createSession()
+        response = created
+        activeSessionID = created.session.sessionId
+        stoppedSessionRecoveryAttempted = false
+        response = try await gateway.command("start_capture")
+        sessionStatus = "正在持续聆听；停顿 8 秒后自动理解本次表达"
+        headset.startCapture(
+            .expression,
+            sessionID: created.session.sessionId
+        )
+    }
+
+    private func scheduleSilenceBoundary(_ purpose: CapturePurpose) {
+        guard sessionStarted, !safetyAbortInProgress else { return }
+        silenceTask?.cancel()
+        let delay: UInt64
+        switch purpose {
+        case .expression:
+            delay = 8_000_000_000
+            sessionStatus = "检测到患者说话；继续说话会重新计算 8 秒"
+        case .command:
+            delay = 1_200_000_000
+            sessionStatus = "正在聆听患者的确认或否定…"
+        }
+        silenceTask = Task {
             try? await Task.sleep(nanoseconds: delay)
             guard !Task.isCancelled else { return }
+            sessionStatus = purpose == .expression
+                ? "已静默 8 秒，正在结束本次表达…"
+                : "正在理解患者的语音回应…"
             headset.stopCapture()
         }
     }
 
     private func handleCapture(_ capture: EarbudCapture) async {
-        guard !capture.pcm.isEmpty, let gateway else {
-            errorMessage = "没有收到耳机麦克风 PCM，未执行任何确认。"
+        guard !Task.isCancelled else { return }
+        guard sessionStarted, !safetyAbortInProgress else { return }
+        guard capture.sessionID == activeSessionID else { return }
+        guard !capture.pcm.isEmpty else {
+            await restartAfterEmptyCapture(capture.purpose)
             return
         }
         let wav = WAVEncoder.pcm16Mono16k(capture.pcm)
         do {
             switch capture.purpose {
             case .expression:
-                sessionStatus = "正在理解患者表达…"
-                try await gateway.uploadExpression(
+                try await submitExpressionCapture(
                     wav: wav,
                     primaryTranscript: capture.primaryTranscript
                 )
-                response = try await gateway.command("stop_capture")
-                try await drivePrivateFlow()
             case .command:
-                guard !capture.primaryTranscript.isEmpty else {
-                    try await repeatCurrentPrompt("没有听清，请再说一次。")
-                    return
-                }
-                let interpretation = try await gateway.interpretCommand(
+                try await submitVoiceCommand(
                     wav: wav,
                     primaryTranscript: capture.primaryTranscript
-                )
-                try await apply(
-                    interpretation: interpretation,
-                    rawTranscript: capture.primaryTranscript
                 )
             }
         } catch {
+            guard
+                !Task.isCancelled,
+                capture.sessionID == activeSessionID,
+                sessionStarted,
+                !safetyAbortInProgress
+            else {
+                return
+            }
             fail(error)
         }
     }
 
-    private func drivePrivateFlow() async throws {
-        guard let response, let gateway else { return }
-        switch response.session.stage {
-        case "heard_content_review":
-            promptContext = .heard
-            let fragments = response.session.heardStable.joined(separator: "，")
-            try privateSpeak("我听到的是：\(fragments)。如果正确，请说是；不正确请说不是。")
-        case "category_clarification":
-            promptContext = .category(response.session.clarificationOptions)
-            let question = response.session.clarificationQuestion ?? "这句话属于哪一类？"
-            try privateSpeak(
-                question + "。选项是：" + response.session.clarificationOptions.joined(separator: "，")
-            )
-        case "candidate_selection", "final_review":
-            if let selected = response.selectedCandidate {
-                promptContext = .final(selected)
-                let audio = try await gateway.audio(kind: "neutral")
-                try privateAudio(audio)
-            } else {
-                guard !response.session.candidates.isEmpty else {
-                    throw GatewayClientError.invalidResponse
-                }
-                candidateIndex = min(candidateIndex, response.session.candidates.count - 1)
-                let candidate = response.session.candidates[candidateIndex]
-                promptContext = .candidate(candidate)
-                try privateSpeak(
-                    "候选表达：\(candidate.text)。如果符合你的意思，请说是；换一个请说不是；重听请说再说一次。"
-                )
-            }
-        case "voice_authorized":
-            safetyStatus = "已获得患者确认，准备通过手机扬声器播放"
-            let personal = try await gateway.audio(kind: "personal")
-            let playbackID = UUID().uuidString
-            headset.stopCapture()
-            try audioRouter.playPublicAudio(personal) { [weak self] success in
-                Task { @MainActor in
-                    guard let self, let gateway = self.gateway else { return }
-                    do {
-                        self.response = try await gateway.command(
-                            success ? "playback_completed" : "playback_failed",
-                            payload: [
-                                "playback_id": playbackID,
-                                "output_channel": "iphone_speaker",
-                            ]
-                        )
-                        self.sessionStatus = success
-                            ? "表达已播放完成"
-                            : "播放失败，未写入回执或确认记忆"
-                        self.safetyStatus = success
-                            ? "已收到播放完成回执，本次一次性表达已完成"
-                            : "请由陪护者检查手机扬声器后重试"
-                    } catch {
-                        self.fail(error)
-                    }
-                }
-            }
-        case "completed":
-            sessionStatus = "表达已播放完成"
-            safetyStatus = "已收到播放完成回执，本次一次性表达已完成"
-        case "stopped":
-            sessionStatus = "患者已停止本次会话"
-            sessionStarted = false
-        default:
-            sessionStatus = "处理中：\(response.session.stage)"
-        }
-    }
-
-    private func apply(
-        interpretation: EarbudInterpretation,
-        rawTranscript: String
+    private func submitExpressionCapture(
+        wav: Data,
+        primaryTranscript: String
     ) async throws {
         guard let gateway else { return }
-        if interpretation.intent == "stop" {
-            response = try await gateway.command("stop")
-            try await drivePrivateFlow()
+        sessionStatus = "正在理解并补全患者表达…"
+        do {
+            try ensureRoundIsActive()
+            try await gateway.uploadExpression(
+                wav: wav,
+                primaryTranscript: primaryTranscript
+            )
+            try ensureRoundIsActive()
+            response = try await gateway.command("stop_capture")
+        } catch let error as GatewayClientError {
+            guard
+                isStoppedConflict(error),
+                !stoppedSessionRecoveryAttempted,
+                sessionStarted,
+                !safetyAbortInProgress
+            else {
+                throw error
+            }
+            stoppedSessionRecoveryAttempted = true
+            let created = try await gateway.createSession()
+            activeSessionID = created.session.sessionId
+            response = created
+            response = try await gateway.command("start_capture")
+            try ensureRoundIsActive()
+            try await gateway.uploadExpression(
+                wav: wav,
+                primaryTranscript: primaryTranscript
+            )
+            try ensureRoundIsActive()
+            response = try await gateway.command("stop_capture")
+        }
+        try ensureRoundIsActive()
+        response = try await gateway.command(
+            "proceed_without_heard_confirmation"
+        )
+        try await presentFirstCandidate()
+    }
+
+    private func submitVoiceCommand(
+        wav: Data,
+        primaryTranscript: String
+    ) async throws {
+        guard let gateway else { return }
+        guard !primaryTranscript.isEmpty else {
+            try await replayCurrentCandidate(
+                status: "没有听清语音回应，正在重新朗读候选。"
+            )
             return
         }
-        switch promptContext {
-        case .heard:
-            if interpretation.intent == "affirm" && interpretation.consensus {
-                response = try await gateway.command("confirm_heard_content")
-                candidateIndex = 0
-                try await drivePrivateFlow()
-            } else if interpretation.intent == "reject" {
-                response = try await gateway.command("reject_heard_content")
-                sessionStatus = "患者否定了识别结果，本次不会使用"
-            } else {
-                try await repeatCurrentPrompt("我没有听清确认结果。")
-            }
-        case let .category(options):
-            if let option = options.first(where: {
-                rawTranscript.localizedCaseInsensitiveContains($0)
-            }) {
+        let interpretation = try await gateway.interpretCommand(
+            wav: wav,
+            primaryTranscript: primaryTranscript,
+            promptID: currentPromptID
+        )
+        try await applyVoiceInterpretation(interpretation)
+    }
+
+    private func applyVoiceInterpretation(
+        _ interpretation: EarbudInterpretation
+    ) async throws {
+        guard let gateway, currentCandidate != nil else { return }
+        if interpretation.intent == "stop" {
+            let sessionIDToStop = activeSessionID
+            if let sessionIDToStop {
                 response = try await gateway.command(
-                    "select_category",
-                    payload: ["category": option]
+                    "stop",
+                    expectedSessionID: sessionIDToStop
                 )
-                try await drivePrivateFlow()
-            } else {
-                try await repeatCurrentPrompt("没有听清类别，请再说一次。")
             }
-        case let .candidate(candidate):
-            if interpretation.intent == "affirm" && interpretation.consensus {
-                response = try await gateway.command(
-                    "select_candidate",
-                    payload: ["candidate_id": candidate.id]
-                )
-                try await drivePrivateFlow()
-            } else if interpretation.intent == "reject" {
-                candidateIndex += 1
-                if let response, candidateIndex < response.session.candidates.count {
-                    try await drivePrivateFlow()
-                } else {
-                    response = try await gateway.command("none_of_these")
-                    candidateIndex = 0
-                    try await drivePrivateFlow()
-                }
+            sessionStarted = false
+            activeSessionID = nil
+            resetRoundState()
+            sessionStatus = "患者已通过语音停止陪伴"
+            safetyStatus = "未执行新的外放或记忆写入"
+            return
+        }
+
+        guard interpretation.consensus else {
+            try await replayCurrentCandidate(
+                status: "两路识别未达成一致，正在重新朗读候选。"
+            )
+            return
+        }
+
+        switch interpretation.intent {
+        case "affirm":
+            let evidence = VoiceCommandEvidence(
+                interpretationID: interpretation.interpretationId,
+                promptID: currentPromptID,
+                audioHash: interpretation.audioInputHash
+            )
+            if (
+                additionalVoiceConfirmationRequired
+                && firstConfirmationEvidence == nil
+            ) {
+                firstConfirmationEvidence = evidence
+                try await playCurrentCandidateReadback(additional: true)
             } else {
-                try await repeatCurrentPrompt("我会再读一次。")
+                try await confirmAndPlay(latestEvidence: evidence)
             }
-        case let .final(candidate):
-            if interpretation.intent == "affirm" && interpretation.consensus {
-                let strict = response?.strict ?? false
-                let l3 = candidate.sourceLevel == "L3"
-                if strict || l3 {
-                    let firstPromptID = currentPromptID
-                    promptContext = .additionalFinal(
-                        candidate,
-                        firstPromptID: firstPromptID,
-                        firstAudioHash: interpretation.audioInputHash
-                    )
-                    try privateSpeak(
-                        "这是需要额外确认的表达：\(candidate.text)。"
-                        + "如果这仍然准确表达你的意思，请再次明确回答。"
-                    )
-                } else {
-                    try await submitFinalConfirmation(
-                        candidate,
-                        strict: false,
-                        evidence: nil
-                    )
-                }
-            } else if interpretation.intent == "reject" {
-                response = try await gateway.command("go_back")
-                candidateIndex = 0
-                try await drivePrivateFlow()
-            } else {
-                try await repeatCurrentPrompt("我会重新完整朗读。")
-            }
-        case let .additionalFinal(
-            candidate,
-            firstPromptID,
-            firstAudioHash
-        ):
-            if interpretation.intent == "affirm" && interpretation.consensus {
+        case "reject", "back":
+            audioRouter.stop()
+            response = try await gateway.command(
+                "reject_current_candidate"
+            )
+            currentCandidate = nil
+            privateReadbackCompleted = false
+            firstConfirmationEvidence = nil
+            sessionStatus = "患者已否定当前结果，正在准备其他候选…"
+            try await presentFirstCandidate()
+        case "repeat":
+            try await replayCurrentCandidate(
+                status: "正在重新朗读当前候选。"
+            )
+        default:
+            try await replayCurrentCandidate(
+                status: "没有听清是确认还是否定，正在重新朗读候选。"
+            )
+        }
+    }
+
+    private func presentFirstCandidate() async throws {
+        guard let gateway, let response else { return }
+        guard let candidate = response.session.candidates.first else {
+            throw GatewayClientError.invalidResponse
+        }
+        currentCandidate = candidate
+        privateReadbackCompleted = false
+        firstConfirmationEvidence = nil
+        self.response = try await gateway.command(
+            "prepare_candidate_readback",
+            payload: ["candidate_id": candidate.id]
+        )
+        guard let prepared = self.response else {
+            throw GatewayClientError.invalidResponse
+        }
+        additionalVoiceConfirmationRequired = (
+            prepared.strict || candidate.sourceLevel == "L3"
+        )
+        try await playCurrentCandidateReadback(additional: false)
+    }
+
+    private func replayCurrentCandidate(status: String) async throws {
+        sessionStatus = status
+        try await playCurrentCandidateReadback(
+            additional: firstConfirmationEvidence != nil
+        )
+    }
+
+    private func playCurrentCandidateReadback(
+        additional: Bool
+    ) async throws {
+        guard
+            let gateway,
+            currentCandidate != nil,
+            let sessionID = activeSessionID
+        else {
+            return
+        }
+        silenceTask?.cancel()
+        privateReadbackCompleted = false
+        currentPromptID = UUID().uuidString
+        let audio = try await gateway.audio(kind: "neutral")
+        sessionStatus = additional
+            ? "正在耳机中再次完整朗读候选…"
+            : "正在耳机中播放候选结果…"
+        try audioRouter.playPrivateAudio(audio) { [weak self] success in
+            Task { @MainActor in
+                guard let self else { return }
                 guard
-                    firstPromptID != currentPromptID,
-                    firstAudioHash != interpretation.audioInputHash
+                    success,
+                    self.sessionStarted,
+                    self.activeSessionID == sessionID
                 else {
-                    try await repeatCurrentPrompt(
-                        "两次确认证据不能相同，请再次回答。"
-                    )
+                    if !success {
+                        self.fail(AudioRouterError.earbudsNotActive)
+                    }
                     return
                 }
-                try await submitFinalConfirmation(
-                    candidate,
-                    strict: response?.strict ?? false,
-                    evidence: [
-                        "first_prompt_id": firstPromptID,
-                        "second_prompt_id": currentPromptID,
-                        "first_audio_hash": firstAudioHash,
-                        "second_audio_hash": interpretation.audioInputHash,
-                    ]
-                )
-            } else if interpretation.intent == "reject" {
-                response = try await gateway.command("go_back")
-                candidateIndex = 0
-                try await drivePrivateFlow()
-            } else {
-                try await repeatCurrentPrompt("请再次明确确认或否定。")
+                self.privateReadbackCompleted = true
+                let instruction = additional
+                    ? "请再次说是或嗯来确认，说不是来更换结果。"
+                    : "如果正确，请说是、嗯或没错；如果错误，请说不是或不对。"
+                do {
+                    try self.audioRouter.playPrivateText(
+                        instruction,
+                        language: "zh-CN"
+                    ) { [weak self] instructionPlayed in
+                        Task { @MainActor in
+                            guard let self else { return }
+                            guard
+                                instructionPlayed,
+                                self.sessionStarted,
+                                self.activeSessionID == sessionID
+                            else {
+                                if !instructionPlayed {
+                                    self.fail(
+                                        AudioRouterError.earbudsNotActive
+                                    )
+                                }
+                                return
+                            }
+                            self.startVoiceCommandCapture(
+                                sessionID: sessionID,
+                                additional: additional
+                            )
+                        }
+                    }
+                } catch {
+                    self.fail(error)
+                }
             }
-        case .none:
-            break
         }
     }
 
-    private func submitFinalConfirmation(
-        _ candidate: Candidate,
-        strict: Bool,
-        evidence: [String: Any]?
+    private func startVoiceCommandCapture(
+        sessionID: String,
+        additional: Bool
+    ) {
+        guard
+            sessionStarted,
+            !safetyAbortInProgress,
+            activeSessionID == sessionID
+        else {
+            return
+        }
+        sessionStatus = additional
+            ? "等待患者再次语音确认或否定"
+            : "等待患者说“是/嗯”或“不是/不对”"
+        safetyStatus = "语音回应需经两路识别一致后才会确认"
+        headset.startCapture(.command, sessionID: sessionID)
+    }
+
+    private func confirmAndPlay(
+        latestEvidence: VoiceCommandEvidence
     ) async throws {
-        guard let gateway else { return }
-        var payload: [String: Any] = [
-            "private_readback_completed": true,
-            "strict_confirmation": strict,
-            "l3_confirmation": candidate.sourceLevel == "L3",
-        ]
-        if let evidence {
-            payload["voice_confirmation_evidence"] = evidence
+        guard let gateway, privateReadbackCompleted else { return }
+        var interpretationIDs = [latestEvidence.interpretationID]
+        if let first = firstConfirmationEvidence {
+            interpretationIDs.insert(first.interpretationID, at: 0)
         }
         response = try await gateway.command(
-            "final_confirm",
-            payload: payload,
+            "confirm_neutral_playback",
+            payload: [
+                "private_readback_completed": true,
+                "voice_interpretation_ids": interpretationIDs,
+            ],
             confirmationMethod: "voice_semantic"
         )
-        try await drivePrivateFlow()
-    }
-
-    private func repeatCurrentPrompt(_ prefix: String) async throws {
-        sessionStatus = prefix
-        try await drivePrivateFlow()
-    }
-
-    private func privateSpeak(_ text: String) throws {
-        currentPromptID = UUID().uuidString
-        safetyStatus = "未确认内容仅通过耳机中性音朗读"
-        headset.stopCapture()
-        try audioRouter.playPrivateText(text, language: "zh-CN") { [weak self] success in
+        let audio = try await gateway.audio(kind: "neutral")
+        let playbackID = UUID().uuidString
+        sessionStatus = "已确认，正在通过手机扬声器播放完整句子…"
+        safetyStatus = "外放使用系统中性音，不使用患者克隆声音"
+        try audioRouter.playPublicAudio(audio) { [weak self] success in
             Task { @MainActor in
-                guard let self else { return }
-                if success {
-                    self.sessionStatus = "等待患者语音回应"
-                    self.headset.startCapture(.command)
-                } else {
-                    self.errorMessage = "私密朗读失败；不会执行确认。"
+                guard let self, let gateway = self.gateway else { return }
+                do {
+                    self.response = try await gateway.command(
+                        success ? "playback_completed" : "playback_failed",
+                        payload: [
+                            "playback_id": playbackID,
+                            "output_channel": "iphone_speaker",
+                        ]
+                    )
+                    if success {
+                        self.sessionStatus = "本次表达已播放，继续等待下一次表达"
+                        try await self.beginNextExpressionRound()
+                    } else {
+                        self.sessionStatus = "手机播放失败；本次不会写入确认记忆"
+                    }
+                } catch {
+                    self.fail(error)
                 }
             }
         }
     }
 
-    private func privateAudio(_ data: Data) throws {
-        currentPromptID = UUID().uuidString
-        safetyStatus = "患者声音仍被阻止；正在耳机中完整复核"
-        headset.stopCapture()
-        try audioRouter.playPrivateAudio(data) { [weak self] success in
-            Task { @MainActor in
-                guard let self else { return }
-                if success {
-                    self.sessionStatus = "等待患者最终确认"
-                    self.headset.startCapture(.command)
-                } else {
-                    self.errorMessage = "完整私密复核未完成；不会授权患者声音。"
-                }
-            }
+    private func restartAfterEmptyCapture(
+        _ purpose: CapturePurpose
+    ) async {
+        guard
+            sessionStarted,
+            !safetyAbortInProgress,
+            let sessionID = activeSessionID
+        else {
+            return
         }
+        switch purpose {
+        case .expression:
+            sessionStatus = "没有收到有效表达，继续等待患者说话。"
+            headset.startCapture(.expression, sessionID: sessionID)
+        case .command:
+            sessionStatus = "没有收到确认语音，请再说一次。"
+            headset.startCapture(.command, sessionID: sessionID)
+        }
+    }
+
+    private func ensureRoundIsActive() throws {
+        try Task.checkCancellation()
+        guard
+            sessionStarted,
+            !safetyAbortInProgress,
+            activeSessionID != nil
+        else {
+            throw CancellationError()
+        }
+    }
+
+    private func isStoppedConflict(_ error: GatewayClientError) -> Bool {
+        if case let .server(code, message) = error {
+            return code == 409
+                && message.localizedCaseInsensitiveContains("stopped")
+        }
+        return false
+    }
+
+    private func resetRoundState() {
+        response = nil
+        currentCandidate = nil
+        privateReadbackCompleted = false
+        additionalVoiceConfirmationRequired = false
+        firstConfirmationEvidence = nil
+        currentPromptID = ""
     }
 
     private func fail(_ error: Error) {
         errorMessage = error.localizedDescription
-        sessionStatus = "发生错误，未执行确认或外放"
-        safetyStatus = "患者声音未授权"
+        sessionStatus = "发生错误，本次未确认或外放"
+        safetyStatus = "仅使用系统中性音"
+        if case let GatewayClientError.server(code, message) = error,
+           code == 409,
+           message.localizedCaseInsensitiveContains("stopped") {
+            sessionStarted = false
+            activeSessionID = nil
+            sessionStatus = "会话已经安全停止，请重新点击“开始陪伴”"
+        }
     }
 
     private func abortForHardwareSafety(_ reason: String) {
-        stopTask?.cancel()
+        guard sessionStarted, !safetyAbortInProgress else { return }
+        let sessionIDToStop = activeSessionID
+        safetyAbortInProgress = true
+        silenceTask?.cancel()
+        captureProcessingTask?.cancel()
+        activeSessionID = nil
         audioRouter.stop()
-        sessionStarted = false
-        sessionStatus = "\(reason)，本次会话已安全停止"
+        sessionStatus = "\(reason)，正在安全停止陪伴"
         safetyStatus = "未执行新的确认、外放或记忆写入"
         Task {
-            if let gateway {
-                _ = try? await gateway.command("stop")
+            if let gateway, let sessionIDToStop {
+                _ = try? await gateway.command(
+                    "stop",
+                    expectedSessionID: sessionIDToStop
+                )
             }
+            sessionStarted = false
+            safetyAbortInProgress = false
+            resetRoundState()
+            sessionStatus = "\(reason)，陪伴已安全停止，可以重新开始"
         }
     }
 }
 
-private enum PromptContext {
-    case none
-    case heard
-    case category([String])
-    case candidate(Candidate)
-    case final(Candidate)
-    case additionalFinal(
-        Candidate,
-        firstPromptID: String,
-        firstAudioHash: String
-    )
+private struct VoiceCommandEvidence {
+    let interpretationID: String
+    let promptID: String
+    let audioHash: String
 }

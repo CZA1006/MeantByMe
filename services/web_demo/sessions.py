@@ -38,13 +38,24 @@ from meantbyme.core.domain import (
     TTSResult,
 )
 from meantbyme.core.ports import ASRPort, CommandIntentPort, TTSPort
-from meantbyme.core.runtime import MeantByMeRuntime
+from meantbyme.core.runtime import CommandRejected, MeantByMeRuntime
 
 from services.web_demo.config import WebDemoSettings
 from services.web_demo.profiles import DemoProfileRegistry
 
 
 SIMULATED_NOTICE = "Simulated data. Not a clinical accuracy claim."
+
+
+@dataclass(frozen=True)
+class VoiceInterpretationRecord:
+    interpretation_id: str
+    stage: str
+    candidate_id: str | None
+    prompt_id: str
+    intent: CommandIntent
+    consensus: bool
+    audio_hash: str
 
 
 class CapturingTTSAdapter:
@@ -86,6 +97,9 @@ class DemoSession:
     pending_audio_id: str | None = None
     fixture_audio_id: str = "david_fragment_001"
     lock: threading.RLock = field(default_factory=threading.RLock)
+    voice_interpretations: dict[str, VoiceInterpretationRecord] = field(
+        default_factory=dict
+    )
 
     def close(self) -> None:
         self.repository.close()
@@ -118,6 +132,7 @@ class DemoSession:
         *,
         wav_bytes: bytes,
         primary_transcript: str,
+        prompt_id: str,
         mock_secondary_transcript: str | None = None,
     ) -> dict[str, Any]:
         """Interpret command evidence without mutating Runtime authorization."""
@@ -180,11 +195,29 @@ class DemoSession:
             else:
                 resolved = CommandIntent.UNKNOWN
                 consensus = False
+            interpretation_id = f"voice-interpretation-{uuid4().hex}"
+            audio_hash = hashlib.sha256(wav_bytes).hexdigest()
+            self.voice_interpretations[interpretation_id] = (
+                VoiceInterpretationRecord(
+                    interpretation_id=interpretation_id,
+                    stage=stage,
+                    candidate_id=self.runtime.session.selected_candidate_id,
+                    prompt_id=prompt_id,
+                    intent=resolved,
+                    consensus=consensus,
+                    audio_hash=audio_hash,
+                )
+            )
+            while len(self.voice_interpretations) > 12:
+                oldest_id = next(iter(self.voice_interpretations))
+                self.voice_interpretations.pop(oldest_id, None)
             return {
+                "interpretation_id": interpretation_id,
                 "intent": resolved.value,
                 "consensus": consensus,
                 "stage": stage,
-                "audio_input_hash": hashlib.sha256(wav_bytes).hexdigest(),
+                "prompt_id": prompt_id,
+                "audio_input_hash": audio_hash,
                 "primary": {
                     "provider": primary.provider,
                     "intent": primary.intent.value,
@@ -197,6 +230,88 @@ class DemoSession:
                     "status": secondary.status,
                 },
             }
+
+    def handle_voice_confirmation(
+        self,
+        command: PatientCommand,
+    ) -> dict[str, Any]:
+        """Bind Runtime confirmation to server-issued command evidence."""
+        with self.lock:
+            raw_ids = command.payload.get("voice_interpretation_ids")
+            if (
+                not isinstance(raw_ids, list)
+                or not raw_ids
+                or any(not isinstance(item, str) for item in raw_ids)
+                or len(set(raw_ids)) != len(raw_ids)
+            ):
+                raise CommandRejected(
+                    "Voice confirmation requires server-issued "
+                    "interpretation IDs"
+                )
+            candidate = self.runtime.session.selected_candidate()
+            if candidate is None:
+                raise CommandRejected(
+                    "No privately reviewed candidate is active"
+                )
+            required_count = (
+                2
+                if self.runtime.session.strict
+                or candidate.source_level == "L3"
+                else 1
+            )
+            if len(raw_ids) != required_count:
+                raise CommandRejected(
+                    f"Voice confirmation requires {required_count} "
+                    "interpretation record(s)"
+                )
+            records: list[VoiceInterpretationRecord] = []
+            for interpretation_id in raw_ids:
+                record = self.voice_interpretations.get(interpretation_id)
+                if record is None:
+                    raise CommandRejected(
+                        "Voice interpretation is missing, expired, or reused"
+                    )
+                if (
+                    record.stage != self.runtime.session.stage.value
+                    or record.candidate_id != candidate.id
+                    or record.intent is not CommandIntent.AFFIRM
+                    or not record.consensus
+                ):
+                    raise CommandRejected(
+                        "Voice interpretation does not match the active "
+                        "candidate"
+                    )
+                records.append(record)
+
+            latest = records[-1]
+            evidence: dict[str, Any] = {
+                "prompt_id": latest.prompt_id,
+                "audio_hash": latest.audio_hash,
+                "intent": latest.intent.value,
+                "consensus": latest.consensus,
+            }
+            if len(records) == 2:
+                evidence.update(
+                    {
+                        "first_prompt_id": records[0].prompt_id,
+                        "second_prompt_id": records[1].prompt_id,
+                        "first_audio_hash": records[0].audio_hash,
+                        "second_audio_hash": records[1].audio_hash,
+                    }
+                )
+            trusted_payload = dict(command.payload)
+            trusted_payload.pop("voice_interpretation_ids", None)
+            trusted_payload["voice_confirmation_evidence"] = evidence
+            trusted_payload["additional_voice_confirmation"] = (
+                len(records) == 2
+            )
+            trusted_command = command.model_copy(
+                update={"payload": trusted_payload}
+            )
+            self.runtime.handle(trusted_command)
+            for interpretation_id in raw_ids:
+                self.voice_interpretations.pop(interpretation_id, None)
+            return self.response()
 
     def audio_id_for_capture(self) -> str:
         if self.pending_audio_id is not None:
@@ -222,7 +337,7 @@ class DemoSession:
             for event in self.runtime.events
         )
         view_payload = view.model_dump(mode="json")
-        if spoken:
+        if spoken and session.voice_authorized:
             view_payload["personal_voice_status"] = "used"
         return {
             "notice": SIMULATED_NOTICE,

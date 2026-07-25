@@ -80,10 +80,13 @@ Heavy models are cloud- or remote-GPU-first. The Mac application owns interactio
   platform-independent; secrets live only in a git-ignored `.env`.
 - **Viaim iOS hardware track (implemented, awaiting signed-device test).**
   The native iOS 15 client uses the supplied Viaim SDK for 16 kHz PCM and
-  primary text, performs private readback only on an active earbud route, and
-  reuses the Web Demo BFF/Runtime/Gateway flow. Command audio is independently
-  transcribed server-side and the constrained model may return only a command
-  intent; it cannot authorize voice.
+  primary text, ends an expression after 8 seconds without speech, performs
+  candidate readback only on an active earbud route, and reuses the Web Demo
+  BFF/Runtime/Gateway flow. After the private readback, the app records a short
+  patient response: natural affirmations such as “是/嗯/没错” confirm, while
+  “不是/不对/换一个” rejects the candidate. Two ASR/model interpretations
+  must agree before an affirmation can trigger public playback. Public output
+  uses only system-neutral audio.
 
 See [docs/STATUS.md](docs/STATUS.md) for the full done / not-done breakdown.
 

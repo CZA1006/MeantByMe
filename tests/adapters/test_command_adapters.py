@@ -19,7 +19,13 @@ def test_mock_command_understands_natural_chinese_equivalents() -> None:
         "嗯", stage="final_review", language="zh"
     ).intent is CommandIntent.AFFIRM
     assert adapter.interpret(
+        "是的", stage="final_review", language="zh"
+    ).intent is CommandIntent.AFFIRM
+    assert adapter.interpret(
         "不是这个意思", stage="final_review", language="zh"
+    ).intent is CommandIntent.REJECT
+    assert adapter.interpret(
+        "不是这样", stage="final_review", language="zh"
     ).intent is CommandIntent.REJECT
     assert adapter.interpret(
         "再说一次", stage="final_review", language="zh"

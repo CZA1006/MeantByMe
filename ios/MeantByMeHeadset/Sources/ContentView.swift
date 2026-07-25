@@ -12,7 +12,7 @@ struct ContentView: View {
                         .foregroundColor(.indigo)
                     Text("MeantByMe")
                         .font(.largeTitle.bold())
-                    Text("患者确认后，才使用患者声音对外表达")
+                    Text("耳机私密朗读，患者语音确认后再外放")
                         .multilineTextAlignment(.center)
                         .foregroundColor(.secondary)
                 }
@@ -47,7 +47,7 @@ struct ContentView: View {
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
                 } else {
-                    Text("会话已开始。患者只需通过耳机说话，无需操作手机。")
+                    Text("持续陪伴中。停顿 8 秒后自动补全；说“是/嗯”确认，说“不是/不对”更换。")
                         .font(.headline)
                         .multilineTextAlignment(.center)
                     Button("由陪护者结束会话", role: .destructive) {
@@ -57,7 +57,7 @@ struct ContentView: View {
                 }
 
                 Spacer()
-                Text("未确认候选不会显示在此界面，也不会使用患者声音。")
+                Text("候选只在耳机中播放；确认后也只使用系统中性音。")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
