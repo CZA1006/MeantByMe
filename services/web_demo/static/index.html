@@ -2,100 +2,224 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="color-scheme" content="light">
-    <title>MeantByMe Demo</title>
-    <link rel="stylesheet" href="/assets/styles.css?v=profile-bundle-1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#f2f2f7">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>MeantByMe · 意由我</title>
+    <link rel="icon" href="/assets/brand/favicon.svg" type="image/svg+xml">
+    <link rel="alternate icon" href="/assets/brand/favicon-32.png" sizes="32x32">
+    <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon-180.png">
+    <meta property="og:title" content="MeantByMe · 意由我">
+    <meta property="og:description" content="Completed with AI. Meant by me. 让话说完，让我做主。">
+    <meta property="og:image" content="/assets/brand/logo-lockup-en.png">
+    <script>
+      try {
+        const appearance = sessionStorage.getItem("meantbyme_ui_appearance");
+        if (["auto", "light", "dark"].includes(appearance)) {
+          document.documentElement.dataset.theme = appearance;
+        }
+      } catch (_) {
+        // System appearance remains the safe default.
+      }
+    </script>
+    <link rel="stylesheet" href="/assets/styles.css?v=ios-3">
   </head>
   <body>
-    <a class="skip-link" href="#decision">Skip to current decision</a>
-    <header class="app-header">
-      <div class="brand-block">
-        <div class="brand-mark" aria-hidden="true">M</div>
-        <div>
-          <strong>MeantByMe</strong>
-          <span>Completed with AI. Meant by me.</span>
-        </div>
-      </div>
-      <div class="header-status">
-        <button id="profile-button" class="profile-button" type="button" title="Choose simulated profile">
-          No profile
-        </button>
-        <span id="mode-badge" class="mode-badge">MOCK</span>
-        <span id="voice-status" class="voice-status">Voice blocked</span>
-      </div>
-    </header>
-
-    <div class="simulation-notice" role="note">
-      Simulated data. Not a clinical accuracy claim.
+    <div id="launch-screen" class="launch-screen" aria-hidden="true">
+      <img
+        id="launch-lockup"
+        class="launch-lockup"
+        src="/assets/brand/logo-lockup-en.png"
+        alt=""
+      >
     </div>
 
-    <main class="app-shell">
-      <section class="patient-workspace" aria-labelledby="stage-title">
-        <div class="progress-row" aria-label="Expression progress">
-          <span id="progress-label">Ready</span>
-          <div class="progress-track" aria-hidden="true">
-            <span id="progress-value"></span>
+    <a class="skip-link" href="#decision" data-i18n="skipLink">Skip to current decision</a>
+
+    <div class="app-layout">
+      <!-- The frame is a flex column: header block, one scrolling stage region,
+           and the action bar as the last flex item. The bar is therefore always
+           on screen without position:fixed, which avoids iOS URL-bar jank. -->
+      <div class="app-frame">
+        <header class="app-header">
+          <div class="brand-block">
+            <img id="brand-mark" class="brand-mark" src="/assets/brand/logo-mark.svg" alt="">
+            <div class="brand-copy">
+              <strong data-i18n="brandName">MeantByMe</strong>
+              <span data-i18n="brandTagline">Completed with AI. Meant by me.</span>
+            </div>
           </div>
+          <div class="header-actions">
+            <select
+              id="appearance-select"
+              class="appearance-select"
+              data-i18n-aria-label="appearanceLabel"
+              aria-label="Appearance"
+            >
+              <option value="auto" data-i18n="appearanceAuto">Auto</option>
+              <option value="light" data-i18n="appearanceLight">Light</option>
+              <option value="dark" data-i18n="appearanceDark">Dark</option>
+            </select>
+            <button
+              id="language-toggle"
+              class="icon-button"
+              type="button"
+              data-i18n-title="languageToggleTitle"
+              data-i18n-aria-label="languageToggleAria"
+              aria-label="Switch interface language to Chinese"
+              title="Switch interface language"
+            >中</button>
+            <button
+              id="trace-button"
+              class="icon-button"
+              type="button"
+              data-i18n-title="traceButtonTitle"
+              aria-label="Open memory and decision trace, 0 events"
+              title="Memory and decision trace"
+              aria-haspopup="dialog"
+              aria-expanded="false"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+                stroke-linecap="round" aria-hidden="true">
+                <path d="M4 6h16M4 12h16M4 18h10" />
+              </svg>
+              <span id="trace-count" class="trace-count">0</span>
+            </button>
+          </div>
+        </header>
+
+        <div class="status-strip">
+          <button id="profile-button" class="profile-chip" type="button"
+            data-i18n-title="profileButtonTitle" data-i18n-aria-label="profileButtonAria"
+            aria-label="Choose the demo patient profile" title="Choose simulated profile">
+            <span data-i18n="noProfile">No profile</span>
+          </button>
+          <span id="mode-badge" class="mode-badge">MOCK</span>
+          <span id="voice-status" class="voice-status" data-i18n="voiceBlocked">Voice blocked</span>
         </div>
 
-        <div id="decision" class="decision-surface" aria-live="polite">
-          <div class="loading-state">
-            <span class="activity-indicator" aria-hidden="true"></span>
-            <p>Starting simulated session…</p>
+        <p class="simulation-notice" role="note" data-i18n="simulationNotice">
+          Simulated data. Not a clinical accuracy claim.
+        </p>
+
+        <main id="workspace" class="patient-workspace" aria-labelledby="stage-title">
+          <div class="progress-row">
+            <!-- Compact stage announcement. The decision surface itself is not a
+                 live region: focus moves to each new stage heading instead, so
+                 screen readers are not read the whole screen twice. -->
+            <span id="progress-label" aria-live="polite">Ready</span>
+            <div
+              id="progress-track"
+              class="progress-track"
+              role="progressbar"
+              aria-labelledby="progress-label"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="6"
+            >
+              <span id="progress-value"></span>
+            </div>
+          </div>
+
+          <div id="decision" class="decision-surface">
+            <div class="stage loading-state">
+              <span class="activity-indicator" aria-hidden="true"></span>
+              <p data-i18n="startingSession">Starting simulated session…</p>
+            </div>
+          </div>
+        </main>
+
+        <!-- Thumb zone. The stage's primary action and Stop live here so they
+             stay reachable however tall the stage body grows
+             (docs/06: Stop / Back / None of these 始终可见). -->
+        <div id="action-bar" class="action-bar">
+          <p id="status-message" class="status-message" role="status" aria-live="polite"></p>
+          <p id="confirm-gate" class="confirm-gate" aria-live="polite"></p>
+          <div id="primary-actions" class="primary-actions"></div>
+          <div class="bar-row">
+            <div id="universal-controls" class="universal-controls" data-i18n-label="sessionControls" aria-label="Session controls"></div>
+            <div id="stop-slot" class="stop-slot"></div>
           </div>
         </div>
+      </div>
 
-        <div id="universal-controls" class="universal-controls" aria-label="Session controls"></div>
-        <p id="status-message" class="status-message" role="status" aria-live="polite"></p>
-      </section>
-
-      <aside class="trace-panel" aria-labelledby="trace-heading">
-        <div class="trace-heading-row">
+      <!-- Modal bottom sheet on phones; docked as a side column from 900px so a
+           presenter can watch events land while driving the flow. -->
+      <dialog id="trace-dialog" class="sheet" aria-labelledby="trace-heading">
+        <div class="sheet-grip" aria-hidden="true"></div>
+        <div class="sheet-head">
           <div>
-            <span class="eyebrow">Memory &amp; Decision Trace</span>
-            <h2 id="trace-heading">Verifiable events</h2>
+            <span class="eyebrow" data-i18n="traceEyebrow">Memory &amp; Decision Trace</span>
+            <h2 id="trace-heading" data-i18n="traceHeading">Verifiable events</h2>
           </div>
-          <span id="trace-count" class="trace-count">0</span>
+          <button id="trace-close" class="icon-button" type="button"
+            data-i18n-title="close" data-i18n-aria-label="close"
+            aria-label="Close" title="Close">✕</button>
         </div>
-        <div id="trace-list" class="trace-list">
-          <p class="empty-trace">Events will appear as the session advances.</p>
-        </div>
-      </aside>
-    </main>
+        <ul id="trace-list" class="trace-list"></ul>
+        <p id="trace-empty" class="empty-trace" data-i18n="traceEmpty">Events will appear as the session advances.</p>
+      </dialog>
+    </div>
 
     <dialog id="access-dialog" class="access-dialog">
       <form id="access-form" method="dialog">
-        <span class="eyebrow">Protected demo</span>
-        <h2>Enter access code</h2>
-        <label for="access-code">Demo access code</label>
+        <span class="eyebrow" data-i18n="accessEyebrow">Protected demo</span>
+        <h2 data-i18n="accessHeading">Enter access code</h2>
+        <label for="access-code" data-i18n="accessLabel">Demo access code</label>
         <input id="access-code" name="access-code" type="password" autocomplete="current-password" required>
         <p id="access-error" class="form-error" role="alert"></p>
-        <button class="button button-primary" type="submit">Open demo</button>
+        <button class="button button-primary" type="submit" data-i18n="accessSubmit">Open demo</button>
       </form>
     </dialog>
 
     <dialog id="profile-dialog" class="access-dialog profile-dialog">
       <form id="profile-form" method="dialog">
-        <span class="eyebrow">Simulated test profile</span>
-        <h2>Choose memory context</h2>
-        <label for="profile-select">Profile</label>
+        <span class="eyebrow" data-i18n="profileEyebrow">Demo setup</span>
+        <h2 data-i18n="profileHeading">Choose a demo patient</h2>
+        <label for="profile-select" data-i18n="profileLabel">Patient profile</label>
         <select id="profile-select" name="profile-select" required></select>
-        <p class="profile-note">
-          Only structured entries marked simulated are accepted. Narrative text
-          and evaluator answers are not sent to the model.
+        <p class="profile-note" data-i18n="profileNote">
+          The profile supplies simulated preferences and context for this demo.
+          It never authorizes a sentence or personal voice.
         </p>
-        <label class="button button-secondary profile-upload" for="profile-input">
-          Upload structured Markdown
-        </label>
-        <input id="profile-input" class="visually-hidden" type="file" accept=".md,text/markdown,text/plain">
+        <details class="demo-tools profile-advanced">
+          <summary data-i18n="profileAdvanced">Advanced demo tools</summary>
+          <p class="profile-note" data-i18n="profileAdvancedHelp">
+            For evaluators only. Uploaded files must use the structured
+            MeantByMe demo profile format.
+          </p>
+          <label class="button button-secondary profile-upload" for="profile-input" data-i18n="profileUpload">
+            Upload a demo profile file
+          </label>
+          <input id="profile-input" class="visually-hidden" type="file" accept=".md,text/markdown,text/plain">
+        </details>
         <p id="profile-error" class="form-error" role="alert"></p>
-        <button class="button button-primary" type="submit">Start with this profile</button>
+        <button class="button button-primary" type="submit" data-i18n="profileSubmit">Continue with this patient</button>
+      </form>
+    </dialog>
+
+    <dialog id="edit-dialog" class="access-dialog">
+      <form id="edit-form" method="dialog">
+        <span class="eyebrow" data-i18n="editEyebrow">Patient-authored edit</span>
+        <h2 data-i18n="editHeading">Edit this expression</h2>
+        <label for="edit-text" data-i18n="editLabel">Expression text</label>
+        <textarea id="edit-text" name="edit-text" rows="4" required></textarea>
+        <p class="dialog-note" data-i18n="editNote">
+          Your edit becomes patient-authored content. The expression returns to
+          private review before anything can be spoken.
+        </p>
+        <p id="edit-error" class="form-error" role="alert"></p>
+        <div class="dialog-actions">
+          <button id="edit-cancel" class="button button-secondary" type="button" data-i18n="cancel">Cancel</button>
+          <button class="button button-primary" type="submit" data-i18n="editSubmit">Save edit</button>
+        </div>
       </form>
     </dialog>
 
     <template id="candidate-template">
-      <article class="candidate-item">
+      <li class="candidate-item">
         <button class="candidate-select" type="button">
           <span class="candidate-index"></span>
           <span class="candidate-copy">
@@ -104,10 +228,9 @@
           </span>
           <span class="candidate-arrow" aria-hidden="true">›</span>
         </button>
-        <div class="candidate-provenance"></div>
-      </article>
+      </li>
     </template>
 
-    <script src="/assets/app.js?v=profile-bundle-1" defer></script>
+    <script src="/assets/app.js?v=ios-3" defer></script>
   </body>
 </html>

@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 import hashlib
+from collections import Counter
 from datetime import UTC, datetime
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 from uuid import uuid4
 
 from meantbyme.core.domain import (
     AuthorizedExpression,
     CommandActor,
-    ConfirmedContext,
     ExpressionCandidate,
     ExpressionReceipt,
     ExpressionSession,
+    HeardToken,
     MemoryItem,
     MemoryType,
     PatientCommand,
@@ -21,6 +22,7 @@ from meantbyme.core.domain import (
     RuntimeEventType,
     SessionStage,
     SessionViewModel,
+    TranscriptEvidence,
     UncertaintyBand,
     VerificationLevel,
 )
@@ -30,6 +32,7 @@ from meantbyme.core.personalization import (
     has_strong_verified_match,
     idempotency_key,
     rank_candidates,
+    tokenize,
 )
 from meantbyme.core.policies import (
     assess_uncertainty,
@@ -168,6 +171,7 @@ class MeantByMeRuntime:
             headline=self.session.stage.value.replace("_", " ").title(),
             heard_stable=evidence.stable_fragments if evidence else [],
             heard_uncertain=evidence.uncertain_fragments if evidence else [],
+            heard_sequence=self._heard_sequence(evidence),
             clarification_question=(
                 "Is this about a plan, treatment, meeting someone, or something else?"
                 if self.session.stage is SessionStage.CATEGORY_CLARIFICATION
@@ -185,6 +189,42 @@ class MeantByMeRuntime:
             ],
             personal_voice_status=personal_voice_status,
         )
+
+    @staticmethod
+    def _heard_sequence(
+        evidence: TranscriptEvidence | None,
+    ) -> list[HeardToken]:
+        """Preserve word order for review without treating uncertainty as consent.
+
+        Evidence keeps stable and uncertain fragments in separate lists for
+        policy decisions. The UI additionally needs one readable sentence. We
+        use the most complete successful transcript only as an ordering surface,
+        then label tokens from the stable multiset. Confirming heard content
+        continues to lock only ``stable_fragments`` in
+        ``_handle_confirm_heard_content``.
+        """
+
+        if evidence is None:
+            return []
+        successful = [
+            result for result in evidence.results if result.status == "success"
+        ]
+        if not successful:
+            return []
+        review_tokens = max(
+            (tokenize(result.transcript) for result in successful),
+            key=len,
+            default=[],
+        )
+        stable_remaining = Counter(evidence.stable_fragments)
+        sequence: list[HeardToken] = []
+        for token in review_tokens:
+            status: Literal["stable", "uncertain"] = "uncertain"
+            if stable_remaining[token] > 0:
+                stable_remaining[token] -= 1
+                status = "stable"
+            sequence.append(HeardToken(text=token, status=status))
+        return sequence
 
     def _handle_start_capture(self, command: PatientCommand) -> None:
         self._require_patient(command)

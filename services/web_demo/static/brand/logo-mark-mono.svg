@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="MeantByMe">
+  <title>MeantByMe</title>
+  <!-- Single-colour cut of logo-mark.svg. Inherits currentColor, so it can sit
+       on teal, on ink, or reversed out of a dark surface. Use where the two-tone
+       mark would clash with surrounding colour. -->
+  <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+    <g stroke-width="4.8" opacity="0.55">
+      <path d="M21 9 H9.5 V21.5" />
+      <path d="M27 39 H38.5 V26.5" />
+    </g>
+    <path d="M17.1 24.7 L22.4 30 L32.6 17.2" stroke-width="5.2" />
+  </g>
+</svg>

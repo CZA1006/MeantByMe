@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="MeantByMe">
+  <title>MeantByMe</title>
+  <!--
+    A quoted sentence, approved.
+
+    The corner brackets are the CJK quotation pair 「 」 — what someone said, held
+    intact (让话说完). Set 180° apart they frame without closing: the sentence is
+    bracketed, not boxed in.
+
+    The check is the patient's authorization (让我做主), drawn a little heavier
+    than the frame and carrying the violet this product reserves for the private
+    confirmation moment.
+
+    Clear space: 6 units on every side (one bracket stroke). Never re-colour the
+    check to teal — the two-tone split is what separates "held" from "approved".
+    Below 20px use favicon.svg instead; the brackets stop resolving.
+  -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <g stroke="#1f807d" stroke-width="4.8">
+      <path d="M21 9 H9.5 V21.5" />
+      <path d="M27 39 H38.5 V26.5" />
+    </g>
+    <path d="M17.1 24.7 L22.4 30 L32.6 17.2" stroke="#695fc3" stroke-width="5.2" />
+  </g>
+</svg>

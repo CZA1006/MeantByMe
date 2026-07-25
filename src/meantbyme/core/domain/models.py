@@ -136,6 +136,19 @@ class TranscriptEvidence(DomainModel):
     evidence_band: UncertaintyBand
 
 
+class HeardToken(DomainModel):
+    """One token in the patient-facing heard-content review.
+
+    ``stable`` means the recognizers agreed on this token and it will be locked
+    into ConfirmedContext when the patient confirms the heard content.
+    ``uncertain`` remains visible evidence only; it is never silently upgraded
+    to patient-confirmed content.
+    """
+
+    text: str
+    status: Literal["stable", "uncertain"]
+
+
 class MemoryItem(DomainModel):
     id: str
     patient_id: str
@@ -287,6 +300,7 @@ class SessionViewModel(DomainModel):
     headline: str
     heard_stable: list[str]
     heard_uncertain: list[str]
+    heard_sequence: list[HeardToken] = Field(default_factory=list)
     clarification_question: str | None
     clarification_options: list[str]
     candidates: list[ExpressionCandidate]

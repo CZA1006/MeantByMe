@@ -1,18 +1,268 @@
+/* ==========================================================================
+   MeantByMe — mobile-first patient UI
+
+   Target is a phone held in one hand, not a desktop browser. Consequences that
+   drive most of this file:
+     - The frame is a flex column with one scrolling region, so the action bar
+       is always on screen without position:fixed (no iOS URL-bar jank).
+     - Type is in rem so OS/browser text scaling actually works.
+     - Safe-area insets are respected on all four edges.
+     - Every text/background pair is >= 4.5:1. The reference Figma palette had
+       nine pairs below that, including the patient instruction (2.82:1) and the
+       emergency stop (4.42:1); the greys here are darkened accordingly.
+   ========================================================================== */
+
+/* ── Layer 1: primitives ─────────────────────────────────────────────────────
+   Every family below was generated in OKLCH on ONE shared lightness spine, so
+   step 600 is the same perceptual lightness in teal as it is in red, 200 is the
+   same hairline weight in every hue, and so on. That shared spine — not a
+   smaller number of hues — is what makes six families read as one system.
+
+     50   tint background        400  icon / mid
+     100  soft background        600  solid fill (white text passes AA)
+     200  hairline               700  text on the family's own 50/100
+   ────────────────────────────────────────────────────────────────────────── */
+
 :root {
-  --ink: #17211f;
-  --muted: #60706c;
-  --line: #d5dedb;
+  /* Paper — warm neutral ground, hue 68 */
+  --paper-50: #faf6f3;
+  --paper-100: #f1ece6;
+  --paper-200: #e0d8d0;
+  --paper-300: #c4bcb4;
+
+  /* Teal — the system's own voice, hue 192 */
+  --teal-50: #ebfaf9;
+  --teal-200: #b8e3e1;
+  --teal-600: #1f807d;
+  --teal-700: #0c6461;
+
+  /* Violet — private, earphone-only moments, hue 285 */
+  --violet-50: #f5f6ff;
+  --violet-200: #d5d5fa;
+  --violet-600: #695fc3;
+
+  /* Amber — unverified, simulated, AI-added, hue 85 */
+  --amber-50: #fff6e1;
+  --amber-200: #f3d598;
+  --amber-700: #6f5100;
+
+  /* Red — stop and refusal, hue 25 */
+  --red-50: #fff3f1;
+  --red-200: #f9cdc9;
+  --red-700: #952d2c;
+
+  /* Green — confirmed, hue 150 */
+  --green-50: #f0faf1;
+  --green-700: #256637;
+
+  --ink-900: #162323;
+  --ink-700: #3e4b4a;
+  --ink-500: #5d6968;
+  --white: #fefcfa;
+  --blue-600: #1e59cd;
+
+  /* ── Layer 2: semantic roles ──────────────────────────────────────────────
+     Components only ever reference these. Re-theming means re-pointing the
+     aliases, never touching a component rule. */
+
+  /* iOS semantic surfaces. The brand mark keeps its teal/violet identity,
+     while patient-facing controls follow familiar system colors. */
+  --canvas: #f2f2f7;
   --surface: #ffffff;
-  --surface-soft: #f2f6f4;
-  --teal: #087f6b;
-  --teal-dark: #056252;
-  --teal-soft: #dff2ec;
-  --yellow: #e7b943;
-  --yellow-soft: #fff4cf;
-  --red: #b93832;
-  --red-soft: #fbe9e7;
-  --focus: #1269d3;
-  --shadow: 0 8px 24px rgba(23, 33, 31, 0.08);
+  --surface-soft: #f2f2f7;
+  --surface-sunken: #e5e5ea;
+  --line: rgba(60, 60, 67, 0.18);
+  --line-strong: rgba(60, 60, 67, 0.29);
+
+  --ink: #000000;
+  --ink-soft: rgba(60, 60, 67, 0.92);
+  --muted: rgba(60, 60, 67, 0.78);
+
+  --teal: #0066cc;
+  --teal-dark: #0055ad;
+  --teal-ink: #005fb8;
+  --teal-soft: #eef6ff;
+  --teal-line: #b8d8ff;
+
+  --violet: #5856d6;
+  --violet-soft: #f2f1ff;
+  --violet-line: #ceccff;
+
+  --amber-ink: #8a4f00;
+  --amber-soft: #fff8e8;
+  --amber-line: #ead19d;
+
+  --red: #d70015;
+  --red-soft: #fff1f1;
+  --red-line: #ffc4c8;
+
+  --green: #248a3d;
+  --green-soft: #edf9ef;
+
+  --focus: #007aff;
+  --chrome-bg: rgba(255, 255, 255, 0.92);
+  --bar-bg: rgba(249, 249, 249, 0.92);
+  --secondary-hover: #d8d8dc;
+  --frame-border: rgba(0, 0, 0, 0.12);
+  --frame-shadow: 0 22px 60px rgba(0, 0, 0, 0.18);
+
+  /* ── Type ─────────────────────────────────────────────────────────────────
+     Three roles, not one stack. Nunito is the designed face; where it is not
+     installed, `ui-rounded` resolves to SF Pro Rounded on Apple platforms and
+     `system-ui` covers the rest, so the rounded character survives the
+     fallback instead of collapsing to Helvetica. CJK faces are listed on every
+     role because the interface is bilingual. */
+
+  --cjk: "PingFang SC", "Hiragino Sans GB", "Source Han Sans SC",
+    "Noto Sans CJK SC", "Microsoft YaHei";
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+    "SF Pro Text", system-ui, var(--cjk), sans-serif;
+  --font-text: -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    system-ui, "Segoe UI", var(--cjk), sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas,
+    monospace;
+
+  /* Type scale, in rem so OS text scaling carries through.
+     11 · 12 · 13 · 15 · 16 · 18 · 20 · 24, then two fluid display sizes. */
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: clamp(1.375rem, 5.6vw, 1.625rem);
+  --text-display: clamp(1.75rem, 7vw, 2.125rem);
+  --text-clock: 2rem;
+
+  --track-tight: -0.02em;
+  --track-wide: 0.08em;
+  --leading-tight: 1.2;
+  --leading-snug: 1.4;
+  --leading-relaxed: 1.55;
+
+  --r-sm: 0.5rem;
+  --r-md: 0.625rem;
+  --r-lg: 0.75rem;
+  --r-xl: 0.875rem;
+  --r-pill: 999px;
+
+  /* Shadows tinted with the ink hue rather than pure black, so elevation sits
+     in the same warm world as the surfaces. */
+  --shadow-sm: none;
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.18);
+  --shadow-bar: none;
+
+  --dur-fast: 120ms;
+  --dur: 220ms;
+  --dur-slow: 420ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.6, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  /* Minimum comfortable touch target. */
+  --tap: 2.75rem;
+
+  --pad-x: 1rem;
+
+  color-scheme: light;
+}
+
+/* iOS semantic dark colors. Auto follows the device; an explicit theme wins.
+   Components keep using semantic aliases, so consent states and interaction
+   hierarchy remain identical in both appearances. */
+:root[data-theme="dark"] {
+  --canvas: #000000;
+  --surface: #1c1c1e;
+  --surface-soft: #1c1c1e;
+  --surface-sunken: #2c2c2e;
+  --line: rgba(84, 84, 88, 0.65);
+  --line-strong: rgba(174, 174, 178, 0.45);
+
+  --ink: #ffffff;
+  --ink-soft: rgba(235, 235, 245, 0.92);
+  --muted: rgba(235, 235, 245, 0.72);
+
+  --teal: #0066cc;
+  --teal-dark: #409cff;
+  --teal-ink: #64d2ff;
+  --teal-soft: rgba(10, 132, 255, 0.17);
+  --teal-line: rgba(100, 210, 255, 0.48);
+
+  --violet: #7d7aff;
+  --violet-soft: rgba(94, 92, 230, 0.2);
+  --violet-line: rgba(125, 122, 255, 0.52);
+
+  --amber-ink: #ffd60a;
+  --amber-soft: rgba(255, 214, 10, 0.14);
+  --amber-line: rgba(255, 214, 10, 0.5);
+
+  --red: #ff453a;
+  --red-soft: rgba(255, 69, 58, 0.08);
+  --red-line: rgba(255, 105, 97, 0.5);
+
+  --green: #30d158;
+  --green-soft: rgba(48, 209, 88, 0.16);
+
+  --focus: #0a84ff;
+  --chrome-bg: rgba(28, 28, 30, 0.92);
+  --bar-bg: rgba(28, 28, 30, 0.92);
+  --secondary-hover: #3a3a3c;
+  --frame-border: rgba(255, 255, 255, 0.16);
+  --frame-shadow: 0 22px 60px rgba(0, 0, 0, 0.55);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.32);
+  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.55);
+
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --canvas: #000000;
+    --surface: #1c1c1e;
+    --surface-soft: #1c1c1e;
+    --surface-sunken: #2c2c2e;
+    --line: rgba(84, 84, 88, 0.65);
+    --line-strong: rgba(174, 174, 178, 0.45);
+
+    --ink: #ffffff;
+    --ink-soft: rgba(235, 235, 245, 0.92);
+    --muted: rgba(235, 235, 245, 0.72);
+
+    --teal: #0066cc;
+    --teal-dark: #409cff;
+    --teal-ink: #64d2ff;
+    --teal-soft: rgba(10, 132, 255, 0.17);
+    --teal-line: rgba(100, 210, 255, 0.48);
+
+    --violet: #7d7aff;
+    --violet-soft: rgba(94, 92, 230, 0.2);
+    --violet-line: rgba(125, 122, 255, 0.52);
+
+    --amber-ink: #ffd60a;
+    --amber-soft: rgba(255, 214, 10, 0.14);
+    --amber-line: rgba(255, 214, 10, 0.5);
+
+    --red: #ff453a;
+    --red-soft: rgba(255, 69, 58, 0.08);
+    --red-line: rgba(255, 105, 97, 0.5);
+
+    --green: #30d158;
+    --green-soft: rgba(48, 209, 88, 0.16);
+
+    --focus: #0a84ff;
+    --chrome-bg: rgba(28, 28, 30, 0.92);
+    --bar-bg: rgba(28, 28, 30, 0.92);
+    --secondary-hover: #3a3a3c;
+    --frame-border: rgba(255, 255, 255, 0.16);
+    --frame-shadow: 0 22px 60px rgba(0, 0, 0, 0.55);
+    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.32);
+    --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.55);
+
+    color-scheme: dark;
+  }
 }
 
 * {
@@ -20,19 +270,81 @@
 }
 
 html {
-  background: var(--surface-soft);
+  /* Left at the browser default so the user's text-size setting scales the
+     whole interface. Never set a px font-size here. */
+  background: var(--canvas);
   color: var(--ink);
-  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-text);
+  font-optical-sizing: auto;
+  /* Proportional figures in prose, tabular only where numbers must align. */
+  font-variant-numeric: proportional-nums;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* App shell, not a document: the page itself never scrolls, the stage region
+   inside it does. This is what keeps the action bar on screen. */
+html,
+body {
+  height: 100%;
 }
 
 body {
   margin: 0;
-  min-width: 320px;
+  min-width: 20rem;
+  overflow: hidden;
+  overscroll-behavior-y: none;
+}
+
+/* Native launch screen + short in-app brand transition. The image is the
+   shipped lockup asset; animation only changes opacity and transform. */
+.launch-screen {
+  align-items: center;
+  animation: launch-screen-out 320ms var(--ease-out) 1.08s forwards;
+  background: var(--canvas);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: max(2rem, env(safe-area-inset-top))
+    max(1.5rem, env(safe-area-inset-right))
+    max(2rem, env(safe-area-inset-bottom))
+    max(1.5rem, env(safe-area-inset-left));
+  position: fixed;
+  z-index: 100;
+}
+
+.launch-lockup {
+  animation: launch-lockup-in 620ms var(--ease-spring) 80ms both;
+  display: block;
+  height: auto;
+  max-width: 20rem;
+  width: min(82vw, 20rem);
+}
+
+@keyframes launch-lockup-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.625rem) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes launch-screen-out {
+  to {
+    opacity: 0;
+    transform: scale(1.015);
+    visibility: hidden;
+  }
 }
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
   letter-spacing: 0;
 }
@@ -41,366 +353,1112 @@ button {
   cursor: pointer;
 }
 
-button:focus-visible,
-input:focus-visible,
-select:focus-visible,
-a:focus-visible {
+:focus-visible {
+  border-radius: var(--r-sm);
   outline: 3px solid var(--focus);
-  outline-offset: 3px;
+  outline-offset: 2px;
+}
+
+/* Headings take the display face and negative tracking; body text stays on the
+   text face. `text-wrap: balance` stops a two-word orphan on the second line of
+   a stage question, which at this type size is very visible. */
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  letter-spacing: var(--track-tight);
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: var(--text-display);
+  font-weight: 800;
+  line-height: var(--leading-tight);
+  margin: 0 0 0.5rem;
+}
+
+h2 {
+  font-size: var(--text-xl);
+  font-weight: 750;
+  line-height: 1.3;
+  margin: 0;
+}
+
+p {
+  letter-spacing: 0;
+  text-wrap: pretty;
+}
+
+.lead {
+  color: var(--muted);
+  font-size: var(--text-lg);
+  line-height: var(--leading-relaxed);
+  margin: 0 0 1.25rem;
+}
+
+/* Small caps-style label. Tracked open because uppercase at 12px sets tight. */
+.eyebrow {
+  color: var(--teal-ink);
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: 800;
+  letter-spacing: var(--track-wide);
+  margin-bottom: 0.375rem;
+  text-transform: uppercase;
 }
 
 .skip-link {
   background: var(--ink);
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
   color: white;
-  left: 16px;
-  padding: 10px 14px;
+  font-weight: 700;
+  left: 1rem;
+  padding: 0.75rem 1rem;
   position: fixed;
-  top: -60px;
-  z-index: 20;
+  text-decoration: none;
+  top: -5rem;
+  transition: top var(--dur) var(--ease-out);
+  z-index: 40;
 }
 
 .skip-link:focus {
-  top: 12px;
+  top: 0;
 }
+
+/* ── App frame ────────────────────────────────────────────────────────────── */
+
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  /* Exact height, not min-height — otherwise the frame grows with its content
+     and pushes the action bar past the fold. dvh follows the mobile URL bar. */
+  height: 100vh;
+  height: 100dvh;
+}
+
+.app-frame {
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  /* Lets the middle region shrink and scroll instead of pushing the bar off. */
+  min-height: 0;
+  overflow: hidden;
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* ── Header ───────────────────────────────────────────────────────────────── */
 
 .app-header {
   align-items: center;
   background: var(--surface);
   border-bottom: 1px solid var(--line);
   display: flex;
+  flex: 0 0 auto;
+  gap: 0.75rem;
   justify-content: space-between;
-  min-height: 72px;
-  padding: 12px 28px;
+  padding: calc(0.625rem + env(safe-area-inset-top)) var(--pad-x) 0.625rem;
 }
 
 .brand-block {
   align-items: center;
   display: flex;
-  gap: 12px;
+  gap: 0.625rem;
+  min-width: 0;
 }
 
+/* The mark carries its own two-tone colour, so no tile or gradient behind it.
+   Sized above the wordmark's cap height so its open strokes hold their own
+   against an 800-weight lockup. */
 .brand-mark {
-  align-items: center;
-  background: var(--ink);
-  border-radius: 6px;
-  color: white;
-  display: flex;
-  font-size: 21px;
-  font-weight: 800;
-  height: 42px;
-  justify-content: center;
-  width: 42px;
-}
-
-.brand-block strong,
-.brand-block span {
   display: block;
-  letter-spacing: 0;
+  flex: 0 0 auto;
+  height: 2.5rem;
+  width: 2.5rem;
 }
 
-.brand-block strong {
-  font-size: 19px;
+.brand-copy {
+  min-width: 0;
 }
 
-.brand-block span {
+.brand-copy strong {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 800;
+  letter-spacing: var(--track-tight);
+  line-height: 1.15;
+}
+
+/* The slogan. Kept on one line and clipped rather than wrapped, so the header
+   height never changes between the two languages. Sized so the full English
+   line "Completed with AI. Meant by me." fits a 375px viewport uncut. */
+.brand-copy span {
   color: var(--muted);
-  font-size: 13px;
-  margin-top: 2px;
-}
-
-.header-status {
-  align-items: center;
-  display: flex;
-  gap: 10px;
-}
-
-.profile-button {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
-  max-width: 240px;
-  min-height: 32px;
+  display: block;
+  font-size: var(--text-2xs);
+  line-height: 1.3;
+  margin-top: 0.0625rem;
   overflow: hidden;
-  padding: 6px 9px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.profile-button:hover {
+/* Chinese sets denser than Latin at the same size; the slogan gets a touch more
+   room so 让话说完，让我做主 does not look cramped next to the wordmark. */
+:root:lang(zh) .brand-copy span {
+  font-size: var(--text-sm);
+  letter-spacing: 0.01em;
+}
+
+.header-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.375rem;
+}
+
+.icon-button {
+  align-items: center;
+  background: var(--surface);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--r-md);
+  color: var(--ink-soft);
+  display: inline-flex;
+  font-size: var(--text-base);
+  font-weight: 800;
+  height: var(--tap);
+  justify-content: center;
+  min-width: var(--tap);
+  padding: 0 0.5rem;
+  position: relative;
+  transition: background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.icon-button svg {
+  height: 1.25rem;
+  width: 1.25rem;
+}
+
+.icon-button:hover {
   background: var(--surface-soft);
+  border-color: var(--teal-line);
+}
+
+.icon-button:active {
+  transform: scale(0.94);
+}
+
+.icon-button[aria-expanded="true"] {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+  color: var(--teal-ink);
+}
+
+/* ── Status strip ─────────────────────────────────────────────────────────── */
+
+/* Wraps rather than scrolls: the voice-authorization state must never be a
+   badge the patient has to swipe sideways to discover. */
+.status-strip {
+  align-items: center;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  padding: 0.5rem var(--pad-x);
+}
+
+.profile-chip {
+  align-items: center;
+  background: var(--surface);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  color: var(--ink-soft);
+  display: inline-flex;
+  /* The strip scrolls horizontally, so chips keep their natural width rather
+     than shrinking the profile name down to an ellipsis. */
+  flex: 0 0 auto;
+  font-size: var(--text-sm);
+  font-weight: 750;
+  gap: 0.4375rem;
+  max-width: 15rem;
+  min-height: var(--tap);
+  overflow: hidden;
+  padding: 0.25rem 0.75rem;
+  white-space: nowrap;
+}
+
+.profile-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.profile-chip::before {
+  background: var(--teal);
+  border-radius: 50%;
+  content: "";
+  flex: 0 0 auto;
+  height: 0.5rem;
+  width: 0.5rem;
 }
 
 .mode-badge,
 .voice-status,
 .risk-badge,
 .source-badge,
-.trace-count,
 .memory-badge {
-  border-radius: 999px;
+  align-items: center;
+  border-radius: var(--r-pill);
   display: inline-flex;
-  font-size: 12px;
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
   font-weight: 750;
+  gap: 0.3125rem;
   line-height: 1;
-  padding: 7px 9px;
+  padding: 0.4375rem 0.625rem;
+  white-space: nowrap;
 }
 
 .mode-badge {
-  background: var(--yellow-soft);
-  color: #6b5012;
+  background: var(--amber-soft);
+  border: 1px solid var(--amber-line);
+  color: var(--amber-ink);
+  letter-spacing: 0.05em;
 }
 
 .voice-status {
   background: var(--surface-soft);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   color: var(--muted);
+  transition: background var(--dur) var(--ease-out),
+    border-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
+}
+
+/* Status carries an icon as well as colour, never colour alone. */
+.voice-status::before {
+  content: "⃠";
 }
 
 .voice-status[data-status="authorized"],
 .voice-status[data-status="used"] {
   background: var(--teal-soft);
-  border-color: #a3d8ca;
-  color: var(--teal-dark);
+  border-color: var(--teal-line);
+  color: var(--teal-ink);
+}
+
+.voice-status[data-status="authorized"]::before,
+.voice-status[data-status="used"]::before {
+  content: "✓";
+}
+
+.voice-status[data-status="awaiting_confirmation"] {
+  background: var(--amber-soft);
+  border-color: var(--amber-line);
+  color: var(--amber-ink);
+}
+
+.voice-status[data-status="awaiting_confirmation"]::before {
+  content: "◌";
 }
 
 .simulation-notice {
-  background: var(--yellow-soft);
-  border-bottom: 1px solid #ead489;
-  color: #604c19;
-  font-size: 13px;
-  font-weight: 650;
-  padding: 8px 28px;
+  background: var(--amber-soft);
+  border-bottom: 1px solid var(--amber-line);
+  color: var(--amber-ink);
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  margin: 0;
+  padding: 0.375rem var(--pad-x);
   text-align: center;
 }
 
-.app-shell {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 410px);
-  margin: 0 auto;
-  max-width: 1440px;
-  min-height: calc(100vh - 105px);
-}
+/* ── Scrolling stage region ───────────────────────────────────────────────── */
 
 .patient-workspace {
-  background: var(--surface);
-  min-width: 0;
-  padding: 32px clamp(22px, 5vw, 72px) 44px;
+  -webkit-overflow-scrolling: touch;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-anchor: none;
+  overscroll-behavior: contain;
+  padding: 1rem var(--pad-x) 1.5rem;
+  /* Scrollbar stays visible: stages run well past one screen and the only cue
+     that more content follows must not be hidden. */
+  scrollbar-color: var(--line-strong) transparent;
+  scrollbar-width: thin;
 }
 
-.trace-panel {
-  border-left: 1px solid var(--line);
-  min-width: 0;
-  padding: 32px 26px;
+.stage-title {
+  scroll-margin-top: 1rem;
 }
 
 .progress-row {
   align-items: center;
   color: var(--muted);
   display: flex;
-  font-size: 13px;
-  font-weight: 700;
-  gap: 14px;
-  margin-bottom: 36px;
+  font-size: var(--text-sm);
+  font-weight: 750;
+  gap: 0.75rem;
+  margin-bottom: 1.125rem;
+}
+
+#progress-label {
+  white-space: nowrap;
 }
 
 .progress-track {
-  background: #e5ece9;
-  height: 5px;
-  max-width: 340px;
+  background: var(--surface-sunken);
+  border-radius: var(--r-pill);
+  flex: 1 1 auto;
+  height: 0.375rem;
   overflow: hidden;
-  width: 45%;
 }
 
 .progress-track span {
-  background: var(--teal);
+  background: linear-gradient(90deg, var(--teal) 0%, var(--teal-dark) 100%);
+  border-radius: var(--r-pill);
   display: block;
   height: 100%;
-  transition: width 180ms ease;
+  transition: width var(--dur-slow) var(--ease-out);
   width: 6%;
 }
 
-.decision-surface {
-  margin: 0 auto;
-  max-width: 820px;
-  min-height: 470px;
+.progress-track[data-complete="true"] span {
+  background: var(--green);
 }
 
-.eyebrow {
-  color: var(--teal-dark);
-  display: block;
-  font-size: 12px;
-  font-weight: 800;
-  margin-bottom: 7px;
-  text-transform: uppercase;
+.decision-surface > .stage {
+  animation: stage-in var(--dur-slow) var(--ease-out) both;
 }
 
-h1,
-h2,
-h3,
-p {
-  letter-spacing: 0;
+/* Programmatic focus target for orientation, not an interactive control — the
+   entrance animation is its visual cue. */
+.stage-title:focus,
+.stage-title:focus-visible {
+  outline: none;
 }
 
-h1 {
-  font-size: 32px;
-  line-height: 1.2;
-  margin: 0 0 12px;
+@keyframes stage-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-h2 {
-  font-size: 20px;
-  line-height: 1.3;
-  margin: 0;
-}
-
-h3 {
-  font-size: 16px;
-  margin: 0;
-}
-
-.lead {
-  color: var(--muted);
-  font-size: 17px;
-  line-height: 1.55;
-  margin: 0 0 28px;
-  max-width: 650px;
-}
-
-.action-grid {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-top: 28px;
-}
+/* ── Buttons ──────────────────────────────────────────────────────────────── */
 
 .button {
   align-items: center;
-  border: 1px solid var(--line);
-  border-radius: 6px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--r-lg);
   display: inline-flex;
+  font-family: var(--font-display);
+  font-size: var(--text-md);
   font-weight: 750;
+  gap: 0.5rem;
   justify-content: center;
-  min-height: 54px;
-  padding: 13px 18px;
+  min-height: 3.25rem;
+  padding: 0.75rem 1rem;
+  text-align: center;
+  transition: background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out), opacity var(--dur) var(--ease-out);
+}
+
+.button:active:not(:disabled) {
+  box-shadow: var(--shadow-sm);
+  transform: scale(0.98);
 }
 
 .button-primary {
   background: var(--teal);
   border-color: var(--teal);
+  box-shadow: var(--shadow-sm);
   color: white;
 }
 
-.button-primary:hover {
+.button-primary:active:not(:disabled) {
   background: var(--teal-dark);
+  border-color: var(--teal-dark);
 }
 
 .button-secondary {
-  background: white;
+  background: var(--surface);
   color: var(--ink);
 }
 
-.button-secondary:hover {
+.button-secondary:active:not(:disabled) {
   background: var(--surface-soft);
 }
 
 .button-danger {
-  background: white;
-  border-color: #e2aaa6;
+  background: var(--surface);
+  border-color: var(--red-line);
   color: var(--red);
 }
 
-.button-danger:hover {
+.button-danger:active:not(:disabled) {
   background: var(--red-soft);
+  border-color: var(--red);
 }
 
 .button:disabled {
   cursor: not-allowed;
-  opacity: 0.45;
+  filter: grayscale(0.4);
+  opacity: 0.4;
 }
 
-.capture-display {
-  align-items: center;
-  border-bottom: 1px solid var(--line);
+/* Hover lift only where a pointer actually exists. */
+@media (hover: hover) and (pointer: fine) {
+  .button:hover:not(:disabled) {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+  }
+
+  .button-primary:hover:not(:disabled) {
+    background: var(--teal-dark);
+    border-color: var(--teal-dark);
+  }
+
+  .button-secondary:hover:not(:disabled) {
+    background: var(--surface-soft);
+    border-color: var(--teal-line);
+  }
+
+  .button-danger:hover:not(:disabled) {
+    background: var(--red-soft);
+    border-color: var(--red);
+  }
+}
+
+/* Secondary choices inside the stage body stack full width on a phone. */
+.action-grid {
+  display: grid;
+  gap: 0.625rem;
+  grid-template-columns: 1fr;
+  margin-top: 1.25rem;
+}
+
+/* Demo-only controls stay available without competing with the patient's
+   primary action. Native details/summary keeps this keyboard- and
+   screen-reader-operable without custom disclosure state. */
+.demo-tools,
+.technical-details {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  margin-top: 1rem;
+  padding: 0.25rem 0.875rem 0.75rem;
+}
+
+.demo-tools summary,
+.technical-details summary,
+.gesture-hint summary {
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: var(--text-base);
+  font-weight: 750;
+  min-height: var(--tap);
+  padding: 0.75rem 0;
+}
+
+.demo-tools .action-grid {
+  margin-top: 0.75rem;
+}
+
+/* ── Action bar (thumb zone) ──────────────────────────────────────────────── */
+
+.action-bar {
+  background: var(--surface);
   border-top: 1px solid var(--line);
+  box-shadow: var(--shadow-bar);
   display: flex;
-  gap: 18px;
-  margin: 28px 0;
-  padding: 28px 0;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem var(--pad-x) calc(0.75rem + env(safe-area-inset-bottom));
+}
+
+.primary-actions {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.primary-actions:empty {
+  display: none;
+}
+
+.bar-row {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.bar-row:has(.universal-controls:empty):has(.stop-slot:empty) {
+  display: none;
+}
+
+/* Overflow controls scroll horizontally; Stop sits outside that scroller so it
+   can never be scrolled out of reach. */
+.universal-controls {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 0.375rem;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 0.125rem;
+  scrollbar-width: none;
+}
+
+/* Set by renderControls only when the row really overflows, so a clipped
+   control reads as "scroll for more" instead of as a broken layout — and a row
+   that fits keeps its last button crisp. */
+.universal-controls[data-overflow="true"] {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 1.5rem), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 1.5rem), transparent);
+}
+
+.universal-controls::-webkit-scrollbar {
+  display: none;
+}
+
+.universal-controls .button {
+  border-radius: var(--r-md);
+  flex: 0 0 auto;
+  font-size: var(--text-base);
+  min-height: var(--tap);
+  padding: 0.5rem 0.75rem;
+}
+
+.stop-slot {
+  flex: 0 0 auto;
+}
+
+.stop-slot .button {
+  border-radius: var(--r-md);
+  font-size: var(--text-base);
+  min-height: var(--tap);
+  padding: 0.5rem 1rem;
+}
+
+.status-message,
+.confirm-gate {
+  margin: 0;
+}
+
+.status-message:empty,
+.confirm-gate:empty {
+  display: none;
+}
+
+.status-message {
+  animation: stage-in var(--dur) var(--ease-out) both;
+  border-radius: var(--r-md);
+  font-size: var(--text-base);
+  font-weight: 700;
+  padding: 0.625rem 0.75rem;
+}
+
+.status-message[data-tone="error"] {
+  background: var(--red-soft);
+  border: 1px solid var(--red-line);
+  color: var(--red);
+}
+
+.status-message[data-tone="info"] {
+  background: var(--teal-soft);
+  border: 1px solid var(--teal-line);
+  color: var(--teal-ink);
+}
+
+.confirm-gate {
+  color: var(--muted);
+  /* Bounded so a long outstanding-items list cannot grow the bar and squeeze
+     the stage away at large text sizes. */
+  -webkit-box-orient: vertical;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  font-size: var(--text-sm);
+  font-weight: 750;
+  line-height: 1.4;
+  overflow: hidden;
+  transition: color var(--dur) var(--ease-out);
+}
+
+.confirm-gate[data-ready="true"] {
+  color: var(--teal-ink);
+}
+
+.button-primary.just-enabled {
+  animation: unlock var(--dur-slow) var(--ease-spring) both;
+}
+
+@keyframes unlock {
+  from {
+    box-shadow: 0 0 0 0 rgba(47, 124, 128, 0.35);
+    transform: scale(0.97);
+  }
+  60% {
+    box-shadow: 0 0 0 0.625rem rgba(47, 124, 128, 0);
+  }
+  to {
+    box-shadow: 0 0 0 0 rgba(47, 124, 128, 0);
+    transform: scale(1);
+  }
+}
+
+/* ── Capture ──────────────────────────────────────────────────────────────── */
+
+.capture-panel {
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  display: flex;
+  flex-direction: column;
+  gap: 1.125rem;
+  margin: 1.25rem 0;
+  padding: 1.5rem 1rem;
+}
+
+.capture-status {
+  align-items: center;
+  color: var(--red);
+  display: flex;
+  font-size: var(--text-sm);
+  font-weight: 800;
+  gap: 0.5rem;
+  letter-spacing: 0.07em;
+  margin: 0;
+  text-transform: uppercase;
 }
 
 .record-dot {
   background: var(--red);
   border-radius: 50%;
-  box-shadow: 0 0 0 8px var(--red-soft);
   flex: 0 0 auto;
-  height: 16px;
-  width: 16px;
+  height: 0.6875rem;
+  position: relative;
+  width: 0.6875rem;
+}
+
+.record-dot::after {
+  animation: record-halo 1.9s var(--ease-in-out) infinite;
+  border: 2px solid var(--red);
+  border-radius: 50%;
+  content: "";
+  inset: -0.25rem;
+  position: absolute;
+}
+
+@keyframes record-halo {
+  0% {
+    opacity: 0.6;
+    transform: scale(0.9);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(2.1);
+  }
+}
+
+.waveform {
+  align-items: center;
+  display: flex;
+  gap: 0.25rem;
+  height: 4rem;
+  justify-content: center;
+  width: 100%;
+}
+
+.waveform span {
+  --level: 0.08;
+  background: var(--teal);
+  border-radius: var(--r-pill);
+  flex: 1 1 0.375rem;
+  height: max(0.375rem, calc(var(--level) * 4rem));
+  max-width: 0.5rem;
+  opacity: calc(0.32 + var(--level) * 0.68);
+  transition: height 90ms var(--ease-out), opacity 90ms linear;
+}
+
+/* No microphone level to read (uploaded WAV / demo fragment): breathe gently
+   so the bars never look frozen. */
+.waveform[data-source="idle"] span {
+  animation: wave-idle 1.5s var(--ease-in-out) infinite;
+  animation-delay: calc(var(--i) * 60ms);
+}
+
+@keyframes wave-idle {
+  0%,
+  100% {
+    height: 0.5rem;
+    opacity: 0.3;
+  }
+  50% {
+    height: 1.75rem;
+    opacity: 0.7;
+  }
+}
+
+.capture-meta {
+  text-align: center;
 }
 
 .capture-time {
-  font-size: 26px;
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--text-clock);
+  /* Tabular so the digits do not shuffle as the clock ticks. */
   font-variant-numeric: tabular-nums;
-  font-weight: 760;
+  font-weight: 800;
+  letter-spacing: var(--track-tight);
+  line-height: 1.1;
 }
 
 .capture-caption {
   color: var(--muted);
   display: block;
-  font-size: 13px;
-  margin-top: 3px;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  margin-top: 0.375rem;
 }
 
+/* ── Processing ───────────────────────────────────────────────────────────── */
+
+.loading-state {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  justify-content: center;
+  min-height: 15rem;
+  text-align: center;
+}
+
+.loading-state p {
+  color: var(--muted);
+  font-size: var(--text-lg);
+  font-weight: 650;
+  margin: 0;
+}
+
+.loading-state h1 {
+  margin: 0;
+}
+
+.activity-indicator {
+  align-items: center;
+  background: var(--teal-soft);
+  border-radius: 50%;
+  display: flex;
+  flex: 0 0 auto;
+  height: 4.25rem;
+  justify-content: center;
+  position: relative;
+  width: 4.25rem;
+}
+
+.activity-indicator::before {
+  animation: ring-out 1.9s var(--ease-in-out) infinite;
+  border: 2px solid var(--teal);
+  border-radius: 50%;
+  content: "";
+  inset: 0;
+  position: absolute;
+}
+
+.activity-indicator::after {
+  animation: pulse-dot 1.6s var(--ease-in-out) infinite;
+  background: var(--teal);
+  border-radius: 50%;
+  content: "";
+  height: 1.125rem;
+  width: 1.125rem;
+}
+
+@keyframes ring-out {
+  0%,
+  100% {
+    opacity: 0.28;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0;
+    transform: scale(1.45);
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.78);
+  }
+}
+
+/* ── Result marks ─────────────────────────────────────────────────────────── */
+
+.result-headline {
+  text-align: center;
+}
+
+.result-mark {
+  align-items: center;
+  animation: mark-pop var(--dur-slow) var(--ease-spring) both;
+  border-radius: 50%;
+  display: flex;
+  height: 4.5rem;
+  justify-content: center;
+  margin: 0 auto 1rem;
+  width: 4.5rem;
+}
+
+.result-mark svg {
+  height: var(--tap);
+  width: var(--tap);
+}
+
+.result-mark.confirmed {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.result-mark.halted {
+  background: var(--amber-soft);
+  color: var(--amber-ink);
+}
+
+@keyframes mark-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.result-mark svg path,
+.result-mark svg polyline {
+  animation: draw-stroke 520ms var(--ease-out) 120ms both;
+  stroke-dasharray: 48;
+  stroke-dashoffset: 48;
+}
+
+@keyframes draw-stroke {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* ── Evidence tokens ──────────────────────────────────────────────────────── */
+
 .evidence-band {
-  border-bottom: 1px solid var(--line);
-  border-top: 1px solid var(--line);
-  margin: 26px 0;
-  padding: 22px 0;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  margin: 1.25rem 0;
+  padding: 1.125rem;
+}
+
+.evidence-heading,
+.audio-review-head {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.evidence-heading {
+  padding-right: calc(var(--tap) + 0.5rem);
+  position: relative;
+}
+
+.evidence-heading .evidence-label {
+  margin-bottom: 0;
+}
+
+.evidence-heading .info-disclosure {
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+
+.evidence-heading .info-disclosure[open] {
+  flex-basis: auto;
+  width: var(--tap);
+}
+
+.evidence-heading .info-card {
+  box-shadow: var(--shadow-md);
+  position: absolute;
+  right: 0;
+  top: calc(var(--tap) + 0.375rem);
+  transform: none;
+  width: min(18rem, calc(100vw - 4.5rem));
+  z-index: 4;
+}
+
+.heard-sentence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.heard-word {
+  animation: token-in var(--dur) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+  background: var(--teal-soft);
+  border: 1.5px solid var(--teal-line);
+  border-radius: var(--r-md);
+  color: var(--teal-ink);
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 760;
+  padding: 0.5rem 0.75rem;
+}
+
+.heard-word.uncertain {
+  background: var(--amber-soft);
+  border-color: var(--amber-line);
+  border-style: dashed;
+  color: var(--amber-ink);
+}
+
+.evidence-legend {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  gap: 0.75rem;
+}
+
+.evidence-legend span {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.375rem;
+}
+
+.legend-swatch {
+  background: var(--teal-soft);
+  border: 1.5px solid var(--teal-line);
+  border-radius: 0.25rem;
+  display: inline-block;
+  height: 0.875rem;
+  width: 1.25rem;
+}
+
+.legend-swatch.uncertain {
+  background: var(--amber-soft);
+  border-color: var(--amber-line);
+  border-style: dashed;
 }
 
 .evidence-group + .evidence-group {
-  margin-top: 18px;
+  border-top: 1px solid var(--line);
+  margin-top: 1rem;
+  padding-top: 1rem;
 }
 
 .evidence-label {
+  align-items: center;
   color: var(--muted);
-  display: block;
-  font-size: 12px;
-  font-weight: 750;
-  margin-bottom: 9px;
+  display: flex;
+  font-size: var(--text-xs);
+  font-weight: 800;
+  gap: 0.5rem;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.625rem;
   text-transform: uppercase;
 }
 
 .token-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 0.5rem;
 }
 
 .token {
+  animation: token-in var(--dur) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 45ms);
   background: var(--teal-soft);
-  border: 1px solid #add9cd;
-  border-radius: 4px;
-  font-size: 17px;
+  border: 1.5px solid var(--teal-line);
+  border-radius: var(--r-md);
+  color: var(--teal-ink);
+  font-size: var(--text-md);
   font-weight: 720;
-  padding: 8px 11px;
+  padding: 0.5rem 0.75rem;
 }
 
+/* Uncertainty is shown by a dashed outline as well as colour. */
 .token.uncertain {
-  background: var(--yellow-soft);
-  border-color: #ead489;
-  color: #6b5012;
+  background: var(--amber-soft);
+  border-color: var(--amber-line);
+  border-style: dashed;
+  color: var(--amber-ink);
 }
+
+@keyframes token-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.375rem) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ── Candidates ───────────────────────────────────────────────────────────── */
 
 .candidate-list {
-  border-top: 1px solid var(--line);
-  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  list-style: none;
+  margin: 1.25rem 0 0;
+  padding: 0;
 }
 
 .candidate-item {
-  border-bottom: 1px solid var(--line);
-  padding: 0;
+  animation: stage-in var(--dur-slow) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 70ms);
+  background: var(--surface);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  transition: border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.candidate-item:focus-within {
+  border-color: var(--teal);
+  box-shadow: var(--shadow-md);
+}
+
+.candidate-item:active {
+  transform: scale(0.995);
 }
 
 .candidate-select {
@@ -409,312 +1467,729 @@ h3 {
   border: 0;
   color: var(--ink);
   display: grid;
-  gap: 14px;
-  grid-template-columns: 34px minmax(0, 1fr) 20px;
-  padding: 20px 4px;
+  gap: 0.75rem;
+  grid-template-columns: 2rem minmax(0, 1fr) 1rem;
+  padding: 1.125rem 1rem 0.875rem;
   text-align: left;
   width: 100%;
 }
 
-.candidate-select:hover {
-  background: var(--surface-soft);
-}
-
 .candidate-index {
   align-items: center;
-  background: var(--ink);
-  border-radius: 50%;
-  color: white;
+  background: var(--surface-sunken);
+  border-radius: var(--r-sm);
+  color: var(--ink);
   display: flex;
-  font-size: 13px;
-  height: 30px;
+  font-size: var(--text-base);
+  font-weight: 800;
+  height: 2rem;
   justify-content: center;
-  width: 30px;
+  transition: background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+  width: 2rem;
+}
+
+.candidate-item:focus-within .candidate-index {
+  background: var(--teal);
+  color: white;
 }
 
 .candidate-copy {
   min-width: 0;
 }
 
+/* Candidate sentences are speech, not UI chrome — display face, like the final
+   expression they may become. */
 .candidate-text {
   display: block;
-  font-size: 20px;
-  line-height: 1.35;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 720;
+  letter-spacing: var(--track-tight);
+  line-height: var(--leading-snug);
   overflow-wrap: anywhere;
 }
 
 .candidate-meta {
   color: var(--muted);
   display: block;
-  font-size: 12px;
-  margin-top: 7px;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  margin-top: 0.375rem;
 }
 
 .candidate-arrow {
   color: var(--teal);
-  font-size: 28px;
+  font-size: var(--text-2xl);
   line-height: 1;
+  transition: transform var(--dur) var(--ease-spring);
 }
 
 .candidate-provenance {
   display: flex;
   flex-wrap: wrap;
-  gap: 7px;
-  padding: 0 4px 17px 52px;
+  gap: 0.375rem;
+  padding: 0 1rem 0.875rem;
+}
+
+/* Small information affordances expand in place. They explain internal source
+   and confirmation rules without making every card read like documentation. */
+.info-disclosure {
+  flex: 0 0 auto;
+  position: relative;
+}
+
+.info-disclosure[open] {
+  flex-basis: 100%;
+  width: 100%;
+}
+
+.info-disclosure summary {
+  align-items: center;
+  background: var(--surface);
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%;
+  color: var(--teal-ink);
+  cursor: pointer;
+  display: inline-flex;
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: 800;
+  height: 2.25rem;
+  justify-content: center;
+  list-style: none;
+  width: 2.25rem;
+}
+
+.info-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.info-disclosure summary::marker {
+  content: "";
+}
+
+.info-disclosure[open] summary {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+}
+
+.info-card {
+  background: var(--teal-soft);
+  border: 1px solid var(--teal-line);
+  border-radius: var(--r-md);
+  color: var(--ink-soft);
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  width: 100%;
+}
+
+.info-card strong {
+  color: var(--teal-ink);
+  display: block;
+  font-size: var(--text-sm);
+}
+
+.info-card p {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  margin: 0.25rem 0 0;
+}
+
+.review-meta .info-disclosure {
+  margin-left: 0.125rem;
+}
+
+.audio-review-head .info-disclosure[open] {
+  flex-basis: auto;
+  width: auto;
+}
+
+.audio-review-head .info-card {
+  left: 0;
+  position: absolute;
+  top: var(--tap);
+  width: min(18rem, calc(100vw - 4.5rem));
+  z-index: 3;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .candidate-item:hover {
+    border-color: var(--teal);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+  }
+
+  .candidate-item:hover .candidate-index {
+    background: var(--teal);
+    color: white;
+  }
+
+  .candidate-item:hover .candidate-arrow,
+  .candidate-item:focus-within .candidate-arrow {
+    transform: translateX(0.25rem);
+  }
 }
 
 .span-chip {
+  align-items: center;
   background: var(--teal-soft);
-  border-radius: 4px;
-  color: var(--teal-dark);
-  font-size: 12px;
-  padding: 5px 7px;
+  border: 1px solid var(--teal-line);
+  border-radius: var(--r-sm);
+  color: var(--teal-ink);
+  display: inline-flex;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  padding: 0.25rem 0.5rem;
 }
 
+/* AI-added spans are dashed, so provenance survives without colour. */
 .span-chip.ai {
-  background: var(--yellow-soft);
-  color: #6b5012;
+  background: var(--amber-soft);
+  border-color: var(--amber-line);
+  border-style: dashed;
+  color: var(--amber-ink);
 }
 
+#review-provenance {
+  margin-bottom: 0.375rem;
+  padding: 0;
+}
+
+.candidate-hint {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  margin: 0.875rem 0 0;
+}
+
+/* ── Final review (private / violet) ──────────────────────────────────────── */
+
+.private-flag {
+  align-items: center;
+  color: var(--violet);
+  display: flex;
+  font-size: var(--text-sm);
+  font-weight: 800;
+  gap: 0.5rem;
+  letter-spacing: 0.06em;
+  margin: 0 0 0.625rem;
+  text-transform: uppercase;
+}
+
+.private-flag svg {
+  flex: 0 0 auto;
+  height: 1.125rem;
+  width: 1.125rem;
+}
+
+/* The sentence about to be spoken in the patient's own voice. It gets the
+   display face and the largest non-heading size in the system. */
 .final-expression {
-  border-bottom: 1px solid var(--line);
-  border-top: 1px solid var(--line);
-  font-size: 28px;
+  background: var(--violet-soft);
+  border: 1.5px solid var(--violet-line);
+  border-radius: var(--r-xl);
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
   font-weight: 760;
-  line-height: 1.35;
-  margin: 24px 0 18px;
+  letter-spacing: var(--track-tight);
+  line-height: 1.45;
+  margin: 0.875rem 0;
   overflow-wrap: anywhere;
-  padding: 26px 0;
+  padding: 1.25rem;
 }
 
 .review-meta {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 20px;
+  gap: 0.375rem;
+  margin-bottom: 0.875rem;
 }
 
 .risk-badge {
   background: var(--surface-soft);
+  border: 1px solid var(--line-strong);
   color: var(--muted);
 }
 
 .risk-badge.high_risk {
   background: var(--red-soft);
+  border-color: var(--red-line);
   color: var(--red);
 }
 
+.risk-badge.high_risk::before {
+  content: "!";
+  font-weight: 800;
+}
+
+.risk-badge.sensitive {
+  background: var(--amber-soft);
+  border-color: var(--amber-line);
+  color: var(--amber-ink);
+}
+
 .source-badge {
-  background: var(--yellow-soft);
-  color: #6b5012;
+  background: var(--amber-soft);
+  border: 1px solid var(--amber-line);
+  color: var(--amber-ink);
 }
 
 .memory-badge {
   background: var(--teal-soft);
-  color: var(--teal-dark);
+  border: 1px solid var(--teal-line);
+  color: var(--teal-ink);
 }
 
 .audio-review {
   background: var(--surface-soft);
-  border-left: 4px solid var(--teal);
-  margin: 22px 0;
-  padding: 18px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--violet);
+  border-radius: var(--r-lg);
+  margin: 1.125rem 0;
+  padding: 1rem;
+}
+
+.audio-review.authorized {
+  border-left-color: var(--teal);
+}
+
+.audio-review strong {
+  display: block;
+  font-size: var(--text-base);
 }
 
 .audio-review audio {
-  margin-top: 12px;
+  border-radius: var(--r-pill);
+  margin-top: 0.75rem;
   width: 100%;
+}
+
+.confirmation-list {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  margin: 1.125rem 0;
+  overflow: hidden;
 }
 
 .confirmation-check {
   align-items: flex-start;
-  border-bottom: 1px solid var(--line);
+  cursor: pointer;
   display: flex;
-  font-weight: 690;
-  gap: 10px;
-  padding: 13px 0;
+  font-size: var(--text-md);
+  font-weight: 700;
+  gap: 0.75rem;
+  line-height: 1.4;
+  min-height: var(--tap);
+  padding: 1rem;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+.confirmation-check + .confirmation-check {
+  border-top: 1px solid var(--line);
 }
 
 .confirmation-check input {
-  height: 21px;
+  accent-color: var(--teal);
+  flex: 0 0 auto;
+  height: 1.5rem;
   margin: 0;
-  width: 21px;
+  width: 1.5rem;
 }
 
-.receipt-table {
+.confirmation-check:has(input:checked) {
+  background: var(--teal-soft);
+  color: var(--teal-ink);
+}
+
+/* Earbud gestures are informational only. docs/06 keeps P0 on standard
+   Bluetooth audio plus on-screen confirmation, and 耳机触控 is P1 "官方 SDK
+   支持时" — so a tap must never be the thing that authorizes speech. */
+.gesture-hint {
+  background: var(--surface-soft);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-lg);
+  margin: 1.125rem 0 0;
+  padding: 0.25rem 1rem 0.5rem;
+}
+
+.gesture-hint summary {
+  color: var(--muted);
+}
+
+.gesture-content {
   border-top: 1px solid var(--line);
-  margin: 24px 0;
+  padding: 0.625rem 0 0.25rem;
+}
+
+.gesture-row {
+  align-items: center;
+  display: flex;
+  font-size: var(--text-base);
+  gap: 0.625rem;
+  padding: 0.25rem 0;
+}
+
+.gesture-row kbd,
+.candidate-hint kbd {
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 0.375rem;
+  font-family: inherit;
+  font-size: var(--text-xs);
+  font-weight: 750;
+  padding: 0.125rem 0.375rem;
+  white-space: nowrap;
+}
+
+.gesture-row kbd {
+  flex: 0 0 auto;
+  min-width: 4.5rem;
+  text-align: center;
+}
+
+.gesture-row span {
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
+/* ── Receipt ──────────────────────────────────────────────────────────────── */
+
+.receipt-table {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  margin: 1.25rem 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.technical-details {
+  margin-bottom: 1.25rem;
+}
+
+.technical-details .receipt-table.compact {
+  margin: 0 0 0.5rem;
 }
 
 .receipt-row {
-  border-bottom: 1px solid var(--line);
   display: grid;
-  gap: 14px;
-  grid-template-columns: 180px minmax(0, 1fr);
-  padding: 13px 0;
+  gap: 0.125rem;
+  padding: 0.75rem 1rem;
+}
+
+.receipt-row + .receipt-row {
+  border-top: 1px solid var(--line);
 }
 
 .receipt-row dt {
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-sm);
+  font-weight: 700;
 }
 
 .receipt-row dd {
-  font-weight: 700;
+  font-weight: 720;
   margin: 0;
   overflow-wrap: anywhere;
 }
 
-.universal-controls {
-  border-top: 1px solid var(--line);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 9px;
-  margin: 24px auto 0;
-  max-width: 820px;
-  padding-top: 18px;
+/* Hashes and identifiers are data to compare, not prose — monospaced. */
+.receipt-row dd code {
+  background: var(--surface-sunken);
+  border-radius: 0.375rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  letter-spacing: 0.01em;
+  padding: 0.125rem 0.375rem;
 }
 
-.universal-controls .button {
-  min-height: 44px;
-  padding: 9px 13px;
+/* ── Trace sheet ──────────────────────────────────────────────────────────── */
+
+.sheet {
+  background: var(--surface);
+  border: 0;
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  bottom: 0;
+  box-shadow: var(--shadow-lg);
+  color: var(--ink);
+  display: none;
+  left: 0;
+  margin: 0;
+  max-height: 82dvh;
+  max-width: none;
+  padding: 0.5rem var(--pad-x) calc(1.25rem + env(safe-area-inset-bottom));
+  overflow-y: auto;
+  right: 0;
+  top: auto;
+  width: 100%;
 }
 
-.status-message {
-  color: var(--red);
-  font-size: 14px;
-  margin: 14px auto 0;
-  max-width: 820px;
-  min-height: 22px;
+.sheet[open] {
+  animation: sheet-in var(--dur-slow) var(--ease-out) both;
+  display: block;
 }
 
-.trace-heading-row {
+.sheet::backdrop {
+  background: rgba(28, 43, 45, 0.5);
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.sheet-grip {
+  background: var(--line-strong);
+  border-radius: var(--r-pill);
+  height: 0.25rem;
+  margin: 0 auto 0.75rem;
+  width: 2.5rem;
+}
+
+.sheet-head {
   align-items: flex-start;
   display: flex;
+  gap: 0.75rem;
   justify-content: space-between;
+  margin-bottom: 0.5rem;
 }
 
 .trace-count {
+  align-items: center;
   background: var(--ink);
+  border-radius: var(--r-pill);
   color: white;
+  display: inline-flex;
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+  justify-content: center;
+  line-height: 1;
+  min-width: 1.125rem;
+  padding: 0.1875rem 0.3125rem;
+  position: absolute;
+  right: -0.25rem;
+  top: -0.25rem;
 }
 
 .trace-list {
-  border-top: 1px solid var(--line);
-  margin-top: 20px;
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  position: relative;
+}
+
+.trace-list:not(:empty)::before {
+  background: var(--line-strong);
+  bottom: 0.875rem;
+  content: "";
+  left: 0.3125rem;
+  position: absolute;
+  top: 0.875rem;
+  width: 1.5px;
 }
 
 .trace-item {
-  border-bottom: 1px solid var(--line);
   display: grid;
-  gap: 10px;
-  grid-template-columns: 11px minmax(0, 1fr);
-  padding: 15px 0;
+  gap: 0.75rem;
+  grid-template-columns: 0.75rem minmax(0, 1fr);
+  padding: 0.75rem 0;
+  position: relative;
+}
+
+.trace-item + .trace-item {
+  border-top: 1px solid var(--line);
 }
 
 .trace-marker {
   background: var(--teal);
+  border: 2px solid var(--surface);
   border-radius: 50%;
-  height: 9px;
-  margin-top: 5px;
-  width: 9px;
+  box-sizing: content-box;
+  height: 0.5rem;
+  margin-top: 0.3125rem;
+  width: 0.5rem;
 }
 
 .trace-item strong {
   display: block;
-  font-size: 13px;
+  font-size: var(--text-sm);
+  font-weight: 750;
 }
 
 .trace-item p {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--text-xs);
   line-height: 1.45;
-  margin: 4px 0 0;
+  margin: 0.1875rem 0 0;
   overflow-wrap: anywhere;
 }
 
-.empty-trace,
-.loading-state {
+.trace-item[data-fresh="true"] {
+  animation: trace-in var(--dur-slow) var(--ease-out) both;
+}
+
+.trace-item[data-fresh="true"] .trace-marker {
+  animation: marker-ping 1.4s var(--ease-out) 2;
+}
+
+@keyframes trace-in {
+  from {
+    opacity: 0;
+    transform: translateX(-0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes marker-ping {
+  0% {
+    box-shadow: 0 0 0 0 rgba(47, 124, 128, 0.5);
+  }
+  100% {
+    box-shadow: 0 0 0 0.5625rem rgba(47, 124, 128, 0);
+  }
+}
+
+.empty-trace {
   color: var(--muted);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  margin: 0.75rem 0 0;
 }
 
-.loading-state {
-  align-items: center;
-  display: flex;
-  gap: 12px;
-  min-height: 300px;
-}
-
-.activity-indicator {
-  animation: pulse 900ms ease-in-out infinite alternate;
-  background: var(--teal);
-  border-radius: 50%;
-  height: 12px;
-  width: 12px;
-}
+/* ── Dialogs ──────────────────────────────────────────────────────────────── */
 
 .access-dialog {
+  background: var(--surface);
   border: 0;
-  border-radius: 8px;
-  box-shadow: var(--shadow);
-  max-width: 420px;
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-lg);
+  color: var(--ink);
+  margin: auto;
+  max-height: calc(100dvh - 2rem);
+  max-width: 28rem;
   padding: 0;
-  width: calc(100% - 36px);
+  width: calc(100% - 2rem);
+}
+
+.access-dialog[open] {
+  animation: dialog-in var(--dur-slow) var(--ease-spring) both;
 }
 
 .access-dialog::backdrop {
-  background: rgba(23, 33, 31, 0.62);
+  background: rgba(28, 43, 45, 0.55);
+  backdrop-filter: blur(3px);
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(1rem) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .access-dialog form {
-  padding: 30px;
+  padding: 1.5rem;
+}
+
+.access-dialog h2 {
+  margin-bottom: 0.25rem;
 }
 
 .access-dialog label {
   display: block;
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 750;
-  margin: 24px 0 7px;
+  margin: 1.25rem 0 0.5rem;
 }
 
 .access-dialog input,
-.access-dialog select {
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  min-height: 48px;
-  padding: 10px 12px;
+.access-dialog select,
+.access-dialog textarea {
+  background: var(--surface);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--r-md);
+  color: var(--ink);
+  /* >=1rem prevents iOS Safari from zooming the page on focus. */
+  font-size: var(--text-md);
+  min-height: 3.125rem;
+  padding: 0.75rem;
+  transition: border-color var(--dur-fast) var(--ease-out);
   width: 100%;
 }
 
-.profile-note {
+.access-dialog textarea {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  line-height: 1.5;
+  min-height: 7rem;
+  resize: vertical;
+}
+
+.profile-note,
+.dialog-note {
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-sm);
   line-height: 1.45;
-  margin: 14px 0 0;
+  margin: 0.875rem 0 0;
 }
 
 .access-dialog .profile-upload {
-  margin-top: 14px;
+  margin-top: 0.875rem;
+}
+
+.access-dialog .profile-advanced {
+  margin-top: 1rem;
+}
+
+.access-dialog .profile-advanced summary {
+  font-size: var(--text-sm);
 }
 
 .access-dialog .button {
-  margin-top: 16px;
+  margin-top: 1rem;
   width: 100%;
+}
+
+.dialog-actions {
+  display: grid;
+  gap: 0.5rem;
 }
 
 .form-error {
   color: var(--red);
-  font-size: 13px;
-  min-height: 18px;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  margin: 0.625rem 0 0;
+  min-height: 1.125rem;
+}
+
+.form-error:empty {
+  margin: 0;
+  min-height: 0;
 }
 
 .visually-hidden {
+  clip-path: inset(50%);
   height: 1px;
   margin: -1px;
   overflow: hidden;
   padding: 0;
   position: absolute;
+  white-space: nowrap;
   width: 1px;
 }
 
@@ -726,10 +2201,12 @@ h3 {
   width: 1px;
 }
 
-@keyframes pulse {
-  from { opacity: 0.35; transform: scale(0.85); }
-  to { opacity: 1; transform: scale(1.1); }
+.patient-workspace[aria-busy="true"] .decision-surface {
+  opacity: 0.55;
+  transition: opacity var(--dur) var(--ease-out);
 }
+
+/* ── Motion opt-out (docs/06: 减少动画) ───────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -740,62 +2217,786 @@ h3 {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
   }
+
+  .button:hover:not(:disabled),
+  .candidate-item:hover,
+  .candidate-item:focus-within {
+    transform: none;
+  }
+
+  .launch-screen {
+    animation-delay: 300ms !important;
+  }
+
+  .launch-lockup {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
 }
 
-@media (max-width: 900px) {
-  .app-shell {
-    grid-template-columns: 1fr;
-  }
+/* ── Scarce height: shed decorative chrome, keep the decision ─────────────────
+   The threshold is in rem, so raising the OS text size trips it too — which is
+   exactly when the stage most needs the room back. */
 
-  .trace-panel {
-    border-left: 0;
-    border-top: 1px solid var(--line);
-  }
-
-  .decision-surface {
-    min-height: 410px;
-  }
-}
-
-@media (max-width: 620px) {
-  .app-header {
-    align-items: flex-start;
-    padding: 12px 16px;
-  }
-
-  .brand-block span {
+@media (max-height: 38rem) {
+  .brand-copy span {
     display: none;
   }
 
-  .header-status {
-    align-items: flex-end;
-    flex-direction: column;
-    gap: 5px;
+  .status-strip {
+    padding-bottom: 0.375rem;
+    padding-top: 0.375rem;
   }
 
+  /* Truncate the profile label rather than let it wrap the strip onto a
+     third line. The full name stays in the button's title attribute. */
+  .profile-chip {
+    max-width: 11rem;
+  }
+}
+
+/* ── Landscape phones: reclaim vertical space ─────────────────────────────── */
+
+@media (max-height: 30rem) and (orientation: landscape) {
+  .brand-copy span,
   .simulation-notice {
-    padding-left: 16px;
-    padding-right: 16px;
+    display: none;
   }
 
-  .patient-workspace,
-  .trace-panel {
-    padding: 24px 18px 34px;
-  }
-
-  .action-grid {
-    grid-template-columns: 1fr;
+  .app-header {
+    padding-bottom: 0.375rem;
+    padding-top: calc(0.375rem + env(safe-area-inset-top));
   }
 
   h1 {
-    font-size: 27px;
+    font-size: var(--text-2xl);
   }
 
-  .candidate-text {
-    font-size: 18px;
+  .loading-state {
+    min-height: 9rem;
   }
 
-  .receipt-row {
-    grid-template-columns: 1fr;
+  .capture-panel {
+    gap: 0.75rem;
+    padding: 1rem;
+  }
+
+  .status-strip {
+    padding-bottom: 0.3125rem;
+    padding-top: 0.3125rem;
+  }
+
+  /* Landscape has width to spare and almost no height: put the primary action
+     beside the universal controls instead of stacking them, which returns
+     roughly 60px to the stage without shrinking any tap target. */
+  .action-bar {
+    align-items: center;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.375rem 0.5rem;
+    padding-top: 0.5rem;
+  }
+
+  .status-message,
+  .confirm-gate {
+    flex: 1 0 100%;
+  }
+
+  .primary-actions {
+    flex: 1 1 13rem;
+  }
+
+  .bar-row {
+    flex: 1 1 11rem;
+  }
+}
+
+/* ── Tablet / desktop: present the phone frame, dock the trace beside it ──── */
+
+@media (min-width: 56.25rem) {
+  body {
+    display: grid;
+    padding: 1.5rem;
+    place-items: center;
+  }
+
+  .app-layout {
+    align-items: stretch;
+    flex-direction: row;
+    gap: 1.5rem;
+    height: min(58rem, calc(100dvh - 3rem));
+    min-height: 0;
+  }
+
+  .app-frame {
+    border: 1px solid rgba(28, 43, 45, 0.08);
+    border-radius: 2.25rem;
+    box-shadow: var(--shadow-lg);
+    flex: 0 0 26rem;
+    width: 26rem;
+  }
+
+  /* Non-modal from here up: opened with show() so a presenter can drive the
+     flow and watch events land at the same time. */
+  .sheet {
+    border-radius: var(--r-xl);
+    flex: 0 0 23rem;
+    height: 100%;
+    inset: auto;
+    max-height: none;
+    padding: 1.25rem;
+    position: static;
+    width: 23rem;
+  }
+
+  .sheet[open] {
+    animation: none;
+  }
+
+  .sheet-grip {
+    display: none;
+  }
+
+  .app-frame .patient-workspace {
+    padding: 1.25rem 1.5rem 1.75rem;
+  }
+
+  .action-bar,
+  .app-header {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+
+  .status-strip,
+  .simulation-notice {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+/* Below the docked breakpoint the sheet is modal, so hide the close affordance
+   duplication only when it is docked. */
+@media (min-width: 56.25rem) {
+  .trace-count {
+    position: static;
+    right: auto;
+    top: auto;
+  }
+}
+
+/* ==========================================================================
+   iOS-native simplification
+
+   The consent model remains unchanged. This layer removes visual chrome and
+   maps the same patient flow onto familiar iOS patterns: system typography,
+   semantic surfaces, inset-grouped rows, a compact navigation bar, a bottom
+   toolbar, and disclosure rows for supporting detail.
+   ========================================================================== */
+
+h1 {
+  font-size: clamp(1.75rem, 8vw, 2.125rem);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+}
+
+h2,
+.brand-copy strong,
+.button,
+.candidate-text,
+.final-expression {
+  font-weight: 600;
+}
+
+.lead {
+  color: var(--muted);
+  font-size: var(--text-md);
+  line-height: 1.45;
+  margin-bottom: 1.25rem;
+}
+
+.eyebrow {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0;
+  margin-bottom: 0.375rem;
+  text-transform: none;
+}
+
+.app-header {
+  background: var(--chrome-bg);
+  border-bottom-color: var(--line);
+  min-height: calc(2.75rem + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) 0.5rem 0;
+}
+
+.brand-block {
+  min-height: 2.75rem;
+  padding-left: 0.5rem;
+}
+
+  .brand-copy span {
+    display: none;
+  }
+
+.brand-mark {
+  display: block;
+  height: 1.75rem;
+  width: 1.75rem;
+}
+
+.brand-block {
+  gap: 0.5rem;
+}
+
+.brand-copy strong {
+  font-family: var(--font-text);
+  font-size: var(--text-md);
+  letter-spacing: -0.01em;
+}
+
+.header-actions {
+  align-items: center;
+  gap: 0;
+}
+
+.appearance-select {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-pill);
+  color: var(--teal-ink);
+  cursor: pointer;
+  font-family: var(--font-text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  min-height: var(--tap);
+  padding: 0 0.5rem;
+  text-align: center;
+}
+
+.appearance-select:hover {
+  background: var(--surface-soft);
+}
+
+.icon-button {
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-pill);
+  color: var(--teal-ink);
+  font-size: var(--text-md);
+  font-weight: 600;
+  padding: 0 0.625rem;
+}
+
+.icon-button:hover,
+.icon-button[aria-expanded="true"] {
+  background: var(--surface-soft);
+  border-color: transparent;
+  color: var(--teal-ink);
+}
+
+.trace-count {
+  background: var(--red);
+  border: 2px solid var(--surface);
+  min-width: 1.125rem;
+}
+
+.status-strip {
+  background: var(--surface-soft);
+  border-bottom: 0;
+  flex-wrap: nowrap;
+  gap: 0.25rem;
+  min-height: 2.5rem;
+  padding: 0.25rem var(--pad-x);
+}
+
+.profile-chip {
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-md);
+  color: var(--teal-ink);
+  flex: 1 1 auto;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  max-width: none;
+  min-height: 2rem;
+  padding: 0.25rem 0;
+}
+
+.profile-chip::before {
+  height: 0.375rem;
+  width: 0.375rem;
+}
+
+.mode-badge {
+  display: none;
+}
+
+.voice-status {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  padding: 0;
+}
+
+.voice-status[data-status="authorized"],
+.voice-status[data-status="used"] {
+  color: var(--green);
+}
+
+.voice-status[data-status="awaiting_confirmation"] {
+  color: var(--amber-ink);
+}
+
+.simulation-notice {
+  background: var(--surface-soft);
+  border-bottom: 0;
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  font-weight: 500;
+  padding: 0.125rem var(--pad-x) 0.375rem;
+  text-align: left;
+}
+
+.patient-workspace {
+  background: var(--canvas);
+  padding: 1.25rem var(--pad-x) 2rem;
+}
+
+.progress-row {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  gap: 0.625rem;
+  margin-bottom: 1.5rem;
+}
+
+.progress-track {
+  background: var(--surface-sunken);
+  height: 0.1875rem;
+}
+
+.progress-track span {
+  background: linear-gradient(90deg, var(--teal-600), var(--violet));
+}
+
+.decision-surface > .stage {
+  animation-duration: var(--dur);
+}
+
+.button {
+  border: 0;
+  border-radius: var(--r-lg);
+  font-family: var(--font-text);
+  font-size: var(--text-md);
+  min-height: 3.125rem;
+  padding: 0.75rem 1rem;
+}
+
+.button-primary {
+  background: var(--teal);
+  box-shadow: none;
+}
+
+.button-secondary {
+  background: var(--surface-sunken);
+  color: var(--ink);
+}
+
+.button-danger {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .button:hover:not(:disabled),
+  .candidate-item:hover {
+    box-shadow: none;
+    transform: none;
+  }
+
+  .button-secondary:hover:not(:disabled) {
+    background: var(--secondary-hover);
+    border-color: transparent;
+  }
+}
+
+.action-bar {
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  background: var(--bar-bg);
+  border-top-color: var(--line);
+  box-shadow: none;
+  gap: 0.375rem;
+  padding: 0.5rem var(--pad-x) calc(0.5rem + env(safe-area-inset-bottom));
+}
+
+.bar-row {
+  gap: 0.375rem;
+}
+
+.universal-controls {
+  gap: 0.375rem;
+}
+
+.universal-controls .button,
+.stop-slot .button {
+  border-radius: var(--r-md);
+  font-size: var(--text-sm);
+  min-height: var(--tap);
+  padding: 0.5rem 0.75rem;
+}
+
+.confirm-gate {
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.status-message {
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.capture-panel,
+.evidence-band,
+.audio-review,
+.receipt-table,
+.confirmation-list {
+  background: var(--surface);
+  border: 0;
+  border-radius: var(--r-lg);
+  box-shadow: none;
+}
+
+.capture-panel {
+  gap: 1rem;
+  padding: 1.25rem 1rem;
+}
+
+.evidence-band {
+  overflow: visible;
+  padding: 1rem;
+}
+
+.heard-word,
+.token,
+.span-chip {
+  border-radius: 0.375rem;
+}
+
+.candidate-list {
+  background: var(--surface);
+  border-radius: var(--r-lg);
+  gap: 0;
+  overflow: hidden;
+}
+
+.candidate-label-help {
+  align-items: center;
+  display: flex;
+  justify-content: flex-end;
+  margin: -0.75rem 0 0.5rem;
+}
+
+.candidate-label-help .info-card {
+  flex: 1 0 100%;
+  width: min(20rem, calc(100vw - 2rem));
+}
+
+.candidate-label-help .info-disclosure[open] {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.candidate-item {
+  animation-delay: 0ms;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.candidate-item + .candidate-item {
+  border-top: 1px solid var(--line);
+}
+
+.candidate-item:focus-within {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.candidate-select {
+  gap: 0.75rem;
+  grid-template-columns: minmax(0, 1fr) 0.75rem;
+  min-height: 4.75rem;
+  padding: 0.875rem 1rem;
+}
+
+.candidate-index {
+  display: none;
+}
+
+.candidate-text {
+  font-family: var(--font-text);
+  font-size: var(--text-md);
+  letter-spacing: -0.01em;
+}
+
+.candidate-meta {
+  font-size: var(--text-xs);
+  font-weight: 400;
+  margin-top: 0.25rem;
+}
+
+.candidate-arrow {
+  color: var(--muted);
+  font-size: var(--text-xl);
+}
+
+.candidate-details,
+.final-details {
+  border-top: 1px solid var(--line);
+  margin-left: 1rem;
+}
+
+.candidate-details summary {
+  color: var(--teal-ink);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  list-style-position: inside;
+  min-height: var(--tap);
+  padding: 0.75rem 1rem 0.75rem 0;
+}
+
+.candidate-details .candidate-provenance {
+  padding: 0 1rem 1rem 0;
+}
+
+.final-details {
+  background: var(--surface);
+  border-radius: var(--r-lg);
+  border-top: 0;
+  margin: 0.75rem 0 1rem;
+  padding-left: 1rem;
+}
+
+.final-details-explanation {
+  color: var(--muted);
+  padding: 0 1rem 1rem 0;
+}
+
+.final-details-explanation p {
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  margin: 0;
+}
+
+.final-details-explanation p + p {
+  margin-top: 0.625rem;
+}
+
+.final-details-explanation strong {
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.review-meta {
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.mode-badge,
+.risk-badge,
+.source-badge,
+.memory-badge {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  padding: 0;
+}
+
+.risk-badge.high_risk {
+  background: transparent;
+  color: var(--red);
+}
+
+.risk-badge.sensitive,
+.source-badge {
+  background: transparent;
+  color: var(--amber-ink);
+}
+
+.memory-badge {
+  background: transparent;
+  color: var(--teal-ink);
+}
+
+.info-disclosure summary {
+  background: transparent;
+  border: 0;
+  color: var(--teal-ink);
+  height: var(--tap);
+  width: var(--tap);
+}
+
+.info-disclosure summary span {
+  align-items: center;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  display: inline-flex;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  height: 1.125rem;
+  justify-content: center;
+  line-height: 1;
+  width: 1.125rem;
+}
+
+.info-disclosure[open] summary {
+  background: var(--teal-soft);
+  border-color: transparent;
+}
+
+.info-card {
+  background: var(--surface);
+  border: 0;
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.final-expression {
+  background: var(--surface);
+  border: 0;
+  border-radius: var(--r-lg);
+  font-family: var(--font-text);
+  font-size: var(--text-2xl);
+  letter-spacing: -0.02em;
+  margin: 0.875rem 0;
+  padding: 1rem;
+}
+
+.private-flag {
+  color: var(--violet);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.audio-review {
+  border-left: 0;
+  padding: 1rem;
+}
+
+.confirmation-list {
+  overflow: hidden;
+}
+
+.confirmation-check {
+  font-size: var(--text-md);
+  font-weight: 400;
+  padding: 0.875rem 1rem;
+}
+
+.confirmation-check:has(input:checked) {
+  background: transparent;
+  color: var(--ink);
+}
+
+.demo-tools,
+.technical-details,
+.gesture-hint {
+  background: var(--surface);
+  border: 0;
+  border-radius: var(--r-lg);
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+.demo-tools summary,
+.technical-details summary,
+.gesture-hint summary {
+  color: var(--teal-ink);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.receipt-row {
+  padding: 0.75rem 1rem;
+}
+
+.receipt-row dt {
+  font-size: var(--text-xs);
+  font-weight: 400;
+}
+
+.receipt-row dd {
+  font-weight: 500;
+}
+
+.sheet {
+  border-radius: 1rem 1rem 0 0;
+}
+
+.access-dialog {
+  border-radius: 1rem;
+}
+
+.access-dialog::backdrop,
+.sheet::backdrop {
+  background: rgba(0, 0, 0, 0.32);
+  backdrop-filter: none;
+}
+
+.access-dialog input,
+.access-dialog select,
+.access-dialog textarea {
+  background: var(--surface-soft);
+  border: 0;
+  border-radius: var(--r-md);
+}
+
+@media (min-width: 56.25rem) {
+  .app-layout {
+    height: min(53.25rem, calc(100dvh - 3rem));
+  }
+
+  .app-frame {
+    border-color: var(--frame-border);
+    border-radius: 2.875rem;
+    box-shadow: var(--frame-shadow);
+    flex-basis: 24.5625rem;
+    width: 24.5625rem;
+  }
+}
+
+/* On the narrowest supported phones, place the four invariant controls in a
+   two-column toolbar instead of clipping "Switch input" behind a scroller. */
+@media (max-width: 21.25rem) {
+  .bar-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .universal-controls,
+  .stop-slot {
+    display: contents;
+  }
+
+  .universal-controls .button,
+  .stop-slot .button {
+    min-width: 0;
+    width: 100%;
   }
 }

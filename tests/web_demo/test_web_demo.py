@@ -74,6 +74,10 @@ def _drive_to_candidates(
     _command(client, session_id, headers, "start_capture")
     heard = _command(client, session_id, headers, "stop_capture")
     assert heard["session"]["stage"] == SessionStage.HEARD_CONTENT_REVIEW
+    assert heard["session"]["heard_sequence"]
+    assert {
+        token["status"] for token in heard["session"]["heard_sequence"]
+    }.issubset({"stable", "uncertain"})
     routed = _command(
         client, session_id, headers, "confirm_heard_content"
     )
@@ -129,6 +133,90 @@ def test_frontend_never_auto_checks_patient_confirmation() -> None:
         "appState.maxAudioSeconds - RECORDING_STOP_HEADROOM_SECONDS"
         in script
     )
+
+
+def test_frontend_uses_patient_facing_bilingual_explanations() -> None:
+    script = (
+        Path(__file__).resolve().parents[2]
+        / "services/web_demo/static/app.js"
+    ).read_text(encoding="utf-8")
+
+    assert 'sourceL2: "AI-assisted completion"' in script
+    assert 'sourceL2: "AI 辅助补全"' in script
+    assert 'riskOrdinary: "Standard confirmation"' in script
+    assert 'riskOrdinary: "标准确认"' in script
+    assert "candidateLabelsOverview" in script
+    assert "final-details-explanation" in script
+    assert "confirmationMethodLabel(receipt.confirmation_method)" in script
+    assert "authorizationScopeLabel(receipt.authorization_scope)" in script
+    assert "focus({ preventScroll: true })" in script
+
+
+def test_frontend_has_a_branded_reduced_motion_launch_transition() -> None:
+    root = Path(__file__).resolve().parents[2]
+    markup = (root / "services/web_demo/static/index.html").read_text(
+        encoding="utf-8",
+    )
+    styles = (root / "services/web_demo/static/styles.css").read_text(
+        encoding="utf-8",
+    )
+    script = (root / "services/web_demo/static/app.js").read_text(
+        encoding="utf-8",
+    )
+
+    assert 'id="launch-screen"' in markup
+    assert "/assets/brand/logo-lockup-en.png" in markup
+    assert 'id="brand-mark" class="brand-mark"' in markup
+    assert 'src="/assets/brand/logo-mark.svg"' in markup
+    assert "@keyframes launch-screen-out" in styles
+    assert "@media (prefers-reduced-motion: reduce)" in styles
+    assert "setupLaunchScreen()" in script
+    assert "logo-lockup-${language}${darkSuffix}.png" in script
+
+
+def test_frontend_supports_system_and_manual_dark_appearance() -> None:
+    root = Path(__file__).resolve().parents[2]
+    markup = (root / "services/web_demo/static/index.html").read_text(
+        encoding="utf-8",
+    )
+    styles = (root / "services/web_demo/static/styles.css").read_text(
+        encoding="utf-8",
+    )
+    script = (root / "services/web_demo/static/app.js").read_text(
+        encoding="utf-8",
+    )
+
+    assert 'content="light dark"' in markup
+    assert 'id="appearance-select"' in markup
+    assert 'value="auto"' in markup
+    assert 'value="light"' in markup
+    assert 'value="dark"' in markup
+    assert "@media (prefers-color-scheme: dark)" in styles
+    assert ':root[data-theme="dark"]' in styles
+    assert "systemDarkAppearance" in script
+    assert "meantbyme_ui_appearance" in script
+    assert "/assets/brand/logo-mark${darkSuffix}.svg" in script
+    assert "logo-lockup-${language}${darkSuffix}.png" in script
+
+
+def test_busy_state_never_re_enables_a_stage_disabled_control() -> None:
+    """Releasing the busy state must not unlock "Confirm and speak".
+
+    A blanket ``element.disabled = false`` sweep after a command completes
+    re-enables the freshly rendered final-confirm button, which the final
+    review stage renders disabled until the patient checks the private
+    readback boxes. Only controls the busy sweep itself disabled may be
+    restored, so the marker has to be read back before clearing.
+    """
+    script = (
+        Path(__file__).resolve().parents[2]
+        / "services/web_demo/static/app.js"
+    ).read_text(encoding="utf-8")
+
+    assert 'element.dataset.busyDisabled = "true"' in script
+    assert 'element.dataset.busyDisabled === "true"' in script
+    # The old unconditional sweep must not come back.
+    assert "element.disabled = disabled" not in script
 
 
 def test_profiles_are_protected_and_no_profile_is_a_memory_free_control(
@@ -274,6 +362,12 @@ def test_full_mock_browser_loop_completes_with_receipt_and_audio(
         created, headers = _create_session(client)
         session_id = created["session"]["session_id"]
         routed = _drive_to_candidates(client, session_id, headers)
+        assert routed["session"]["heard_sequence"] == [
+            {"text": "i", "status": "stable"},
+            {"text": "don't", "status": "stable"},
+            {"text": "want", "status": "uncertain"},
+            {"text": "tomorrow", "status": "stable"},
+        ]
         intended = next(
             candidate
             for candidate in routed["session"]["candidates"]

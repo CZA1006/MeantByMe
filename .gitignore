@@ -29,6 +29,7 @@ __pycache__/
 
 # Build / packaging artifacts
 artifacts/
+.artifacts/
 build/
 dist/
 *.egg-info/
