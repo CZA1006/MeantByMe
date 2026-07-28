@@ -6,7 +6,8 @@ semantic versioning once public releases begin.
 ## Unreleased
 
 - Replaced the initial HumanLoop Lab approximation with the supplied official
-  lockup, converted to white for the dark header surfaces.
+  lockup, converted to white and presented as a secondary `by HumanLoop Lab`
+  team credit rather than a co-equal product collaboration.
 - Added separate English-default and Chinese GitHub Pages hubs with accessible
   language switching and localized product slogans.
 - Replaced the 88 × 192, 15 fps demo asset with a versioned 592 × 1280,

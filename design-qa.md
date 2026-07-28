@@ -44,9 +44,10 @@ The 390 × 844 mobile viewport was captured separately because mobile QR traffic
 - All five resource links are present with their intended href values.
 - Both languages render at 1440 × 1024 and 390 × 844 with no horizontal
   overflow; the language control remains visible at mobile width.
-- The HumanLoop Lab mark and name appear beside the product lockup on desktop;
-  mobile retains the mark while visually hiding only the lab wordmark to
-  preserve the language control and product identity.
+- MeantByMe remains the primary left-aligned product brand. The smaller
+  `by HumanLoop Lab` team credit sits with the right-side controls on desktop.
+- Mobile retains only the official HumanLoop symbol in the header and repeats
+  the complete `by HumanLoop Lab` lockup in the footer.
 - Browser console warnings/errors checked: none.
 
 ## Comparison history
@@ -77,6 +78,17 @@ The 390 × 844 mobile viewport was captured separately because mobile QR traffic
 - Post-fix evidence: browser checks confirm the English root, Chinese route,
   active-language state, localized slogans, functional switching, and
   overflow-free desktop and mobile layouts.
+
+### Iteration 4
+
+- Finding: the `HumanLoop Lab × MeantByMe` lockup implied a collaboration
+  between co-equal brands rather than a team-to-product relationship.
+- Fix: restored MeantByMe as the primary left-aligned brand and moved a smaller
+  `by HumanLoop Lab` credit to the right-side controls. Mobile uses the official
+  team symbol in the header and the complete lockup in the footer.
+- Post-fix evidence: both localized pages preserve the language controls,
+  product hierarchy, team attribution, and zero horizontal overflow at desktop
+  and 390 × 844 mobile widths.
 
 ## Findings
 

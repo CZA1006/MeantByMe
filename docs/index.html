@@ -78,39 +78,41 @@
       min-height: 112px;
       border-bottom: 1px solid var(--line-dark);
     }
-    .brand-cluster {
-      display: flex;
-      align-items: center;
-      min-width: 0;
-      gap: 14px;
-    }
-    .lab-brand {
-      display: block;
-      flex: 0 0 auto;
-      height: 32px;
-      overflow: hidden;
-      line-height: 0;
-    }
-    .lab-lockup {
-      display: block;
-      width: auto;
-      height: 32px;
-    }
-    .brand-divider {
-      flex: 0 0 auto;
-      color: #7f9088;
-      font-size: 17px;
-      font-weight: 500;
-    }
     .logo {
       display: block;
-      width: min(250px, 34vw);
+      width: min(270px, 38vw);
       height: auto;
     }
     .header-actions {
       display: flex;
       align-items: center;
       gap: 18px;
+    }
+    .team-credit {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 7px;
+      color: #91a098;
+      font-size: 11px;
+      font-weight: 750;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .team-lockup {
+      display: block;
+      height: 25px;
+      overflow: hidden;
+      line-height: 0;
+    }
+    .team-logo {
+      display: block;
+      width: auto;
+      height: 25px;
+    }
+    .team-by {
+      flex: 0 0 auto;
+      text-transform: lowercase;
     }
     .language-switch {
       display: inline-flex;
@@ -333,6 +335,7 @@
       gap: 28px;
       font-size: 12px;
     }
+    .footer-team-credit { display: none; }
     footer a { text-decoration: none; }
     footer a:hover { color: white; }
 
@@ -353,10 +356,10 @@
       .header-link { display: none; }
       .header-actions { gap: 10px; }
       .language-option { min-width: 38px; padding-inline: 9px; }
-      .brand-cluster { gap: 8px; }
-      .lab-brand { width: 30px; height: 30px; }
-      .lab-lockup { width: auto; max-width: none; height: 30px; }
-      .brand-divider { font-size: 14px; }
+      .team-credit { width: 30px; height: 30px; gap: 0; overflow: hidden; }
+      .team-by { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+      .team-lockup { width: 30px; height: 30px; }
+      .team-logo { width: auto; max-width: none; height: 30px; }
       .logo { width: min(185px, 48vw); }
       .hero-grid { padding-top: 44px; }
       h1 {
@@ -387,6 +390,18 @@
       .principle p { text-align: left; }
       footer .content { display: block; padding: 28px 0; }
       footer a { display: inline-block; margin-top: 12px; }
+      .footer-team-credit {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        margin-top: 18px;
+        color: #91a098;
+        font-size: 10px;
+        font-weight: 750;
+        letter-spacing: 0.04em;
+      }
+      .footer-team-lockup { display: block; height: 25px; overflow: hidden; line-height: 0; }
+      .footer-team-logo { display: block; width: auto; height: 25px; }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -400,14 +415,14 @@
 
   <section class="hero" aria-labelledby="hero-title">
     <header class="header">
-      <div class="brand-cluster">
-        <span class="lab-brand">
-          <img class="lab-lockup" src="./assets/humanloop-lab-lockup-white.png" alt="HumanLoop Lab">
-        </span>
-        <span class="brand-divider" aria-hidden="true">×</span>
-        <img class="logo" src="./assets/logo-lockup-en-dark.svg" alt="MeantByMe — Completed with AI. Meant by me.">
-      </div>
+      <img class="logo" src="./assets/logo-lockup-en-dark.svg" alt="MeantByMe — Completed with AI. Meant by me.">
       <div class="header-actions">
+        <div class="team-credit" aria-label="by HumanLoop Lab">
+          <span class="team-by">by</span>
+          <span class="team-lockup">
+            <img class="team-logo" src="./assets/humanloop-lab-lockup-white.png" alt="">
+          </span>
+        </div>
         <nav class="language-switch" aria-label="Language">
           <span class="language-option" aria-current="page">EN</span>
           <a class="language-option" href="./zh.html" lang="zh-CN">中文</a>
@@ -514,6 +529,12 @@
     <div class="content">
       <span>© 2026 MeantByMe · Completed with AI. Meant by me.</span>
       <a href="https://github.com/CZA1006/MeantByMe">GitHub repository</a>
+      <div class="footer-team-credit" aria-label="by HumanLoop Lab">
+        <span>by</span>
+        <span class="footer-team-lockup">
+          <img class="footer-team-logo" src="./assets/humanloop-lab-lockup-white.png" alt="">
+        </span>
+      </div>
     </div>
   </footer>
 </body>
