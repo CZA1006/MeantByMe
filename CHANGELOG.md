@@ -5,6 +5,9 @@ semantic versioning once public releases begin.
 
 ## Unreleased
 
+- Added a standalone Traditional Chinese project hub with three-way language
+  switching across the English, Simplified Chinese, and Traditional Chinese
+  pages.
 - Recorded MeantByMe's four AdventureX Hackathon 2026 track awards across the
   localized project hub, READMEs, and current status.
 - Added localized HumanLoop Lab team sections with member roles and

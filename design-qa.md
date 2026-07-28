@@ -1,11 +1,14 @@
 # MeantByMe QR Hub Design QA
 
 - English implementation (default): [`docs/index.html`](docs/index.html)
-- Chinese implementation: [`docs/zh.html`](docs/zh.html)
+- Simplified Chinese implementation: [`docs/zh.html`](docs/zh.html)
+- Traditional Chinese implementation:
+  [`docs/zh-hant.html`](docs/zh-hant.html)
 - Brand sources:
   [`docs/assets/humanloop-lab-lockup-white.png`](docs/assets/humanloop-lab-lockup-white.png),
   [`docs/assets/logo-lockup-en-dark.svg`](docs/assets/logo-lockup-en-dark.svg)
-  and [`docs/assets/logo-lockup-zh-dark.svg`](docs/assets/logo-lockup-zh-dark.svg)
+  [`docs/assets/logo-lockup-zh-dark.svg`](docs/assets/logo-lockup-zh-dark.svg)
+  and [`docs/assets/logo-lockup-zh-hant-dark.svg`](docs/assets/logo-lockup-zh-hant-dark.svg)
 - Visual-reference and viewport screenshots were generated during the design QA
   session and are intentionally not treated as portable source files.
 - Desktop viewport: 1440 × 1024 CSS px, device scale factor 1
@@ -33,16 +36,16 @@ The 390 × 844 mobile viewport was captured separately because mobile QR traffic
 
 ## Interaction and runtime checks
 
-- The English root is the default page and the Chinese edition is available at
-  `/zh.html`.
-- The EN / 中文 controls switch between the two standalone localized pages and
-  expose the current page with `aria-current="page"`.
-- The primary demo CTA resolves uniquely and scrolls to `#demo` in both
+- The English root is the default page, Simplified Chinese is available at
+  `/zh.html`, and Traditional Chinese is available at `/zh-hant.html`.
+- The EN / 简中 / 繁中 controls switch among the three standalone localized
+  pages and expose the current page with `aria-current="page"`.
+- The primary demo CTA resolves uniquely and scrolls to `#demo` in all three
   languages.
 - The native MP4 metadata loads and reports a 1:17 duration.
 - The decoded video reports 592 × 1280 pixels rather than the superseded 88 × 192 release asset.
 - All five resource links are present with their intended href values.
-- Both languages render at 1440 × 1024 and 390 × 844 with no horizontal
+- All three languages render at 1440 × 1024 and 390 × 844 with no horizontal
   overflow; the language control remains visible at mobile width.
 - MeantByMe remains the primary left-aligned product brand. The smaller
   `by HumanLoop Lab` team credit sits with the right-side controls on desktop.
@@ -117,6 +120,16 @@ The 390 × 844 mobile viewport was captured separately because mobile QR traffic
 - Post-fix evidence: all four awards and their track categories render as four
   equal columns on desktop and a single-column sequence on mobile in both
   languages, without horizontal overflow.
+
+### Iteration 7
+
+- Finding: the public hub offered English and Simplified Chinese but no
+  dedicated Traditional Chinese reading experience.
+- Fix: added `/zh-hant.html`, a Traditional Chinese logo lockup, and a
+  three-way EN / 简中 / 繁中 language switch on every localized page.
+- Post-fix evidence: all three routes expose the correct `lang` and
+  `aria-current` values, preserve localized copy, and render without
+  horizontal overflow at desktop and 390 × 844 mobile widths.
 
 ## Findings
 
