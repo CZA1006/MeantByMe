@@ -1,7 +1,10 @@
 # MeantByMe QR Hub Design QA
 
-- Implementation: [`docs/index.html`](docs/index.html)
-- Brand source: [`docs/assets/logo-lockup-zh-dark.svg`](docs/assets/logo-lockup-zh-dark.svg)
+- English implementation (default): [`docs/index.html`](docs/index.html)
+- Chinese implementation: [`docs/zh.html`](docs/zh.html)
+- Brand sources:
+  [`docs/assets/logo-lockup-en-dark.svg`](docs/assets/logo-lockup-en-dark.svg)
+  and [`docs/assets/logo-lockup-zh-dark.svg`](docs/assets/logo-lockup-zh-dark.svg)
 - Visual-reference and viewport screenshots were generated during the design QA
   session and are intentionally not treated as portable source files.
 - Desktop viewport: 1440 × 1024 CSS px, device scale factor 1
@@ -29,11 +32,17 @@ The 390 × 844 mobile viewport was captured separately because mobile QR traffic
 
 ## Interaction and runtime checks
 
-- The primary “观看演示视频” CTA resolves uniquely and scrolls to `#demo`.
+- The English root is the default page and the Chinese edition is available at
+  `/zh.html`.
+- The EN / 中文 controls switch between the two standalone localized pages and
+  expose the current page with `aria-current="page"`.
+- The primary demo CTA resolves uniquely and scrolls to `#demo` in both
+  languages.
 - The native MP4 metadata loads and reports a 1:17 duration.
 - The decoded video reports 592 × 1280 pixels rather than the superseded 88 × 192 release asset.
 - All five resource links are present with their intended href values.
-- Desktop and mobile render with no horizontal overflow.
+- Both languages render at 1440 × 1024 and 390 × 844 with no horizontal
+  overflow; the language control remains visible at mobile width.
 - Browser console warnings/errors checked: none.
 
 ## Comparison history
@@ -53,6 +62,17 @@ The 390 × 844 mobile viewport was captured separately because mobile QR traffic
   `docs/demo.html` to use the versioned URL.
 - Post-fix evidence: the release digest matches the provided source and the
   browser decodes the new asset at 592 × 1280.
+
+### Iteration 3
+
+- Finding: the hub had only a Chinese page and therefore could not make English
+  the default without mixing both languages into one document.
+- Fix: localized the root page in English, added a dedicated `/zh.html` page,
+  used the official English and Chinese lockups, and added a persistent language
+  switch.
+- Post-fix evidence: browser checks confirm the English root, Chinese route,
+  active-language state, localized slogans, functional switching, and
+  overflow-free desktop and mobile layouts.
 
 ## Findings
 
