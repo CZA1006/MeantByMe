@@ -304,6 +304,44 @@
     .resource-detail { color: var(--muted); font-size: 14px; line-height: 1.55; }
     .resource-action { color: var(--accent); font-size: 13px; font-weight: 850; letter-spacing: 0.08em; }
 
+    .team-section {
+      margin-top: 72px;
+      padding-top: 56px;
+      border-top: 1px solid var(--ink);
+    }
+    .team-header {
+      display: grid;
+      grid-template-columns: 0.8fr 1.2fr;
+      align-items: end;
+      gap: 48px;
+    }
+    .team-header h2 {
+      margin: 0;
+      font-size: clamp(32px, 4.5vw, 54px);
+      line-height: 1;
+      letter-spacing: -0.05em;
+    }
+    .team-header p:last-child {
+      max-width: 540px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.7;
+    }
+    .team-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      margin-top: 36px;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+    .member-card { padding: 30px 30px 32px 0; }
+    .member-card + .member-card { padding-left: 30px; border-left: 1px solid var(--line); }
+    .member-number { color: var(--accent); font-size: 12px; font-weight: 850; letter-spacing: 0.12em; }
+    .member-card h3 { margin: 16px 0 10px; font-size: 24px; letter-spacing: -0.025em; }
+    .member-role { margin: 0; font-size: 15px; font-weight: 760; line-height: 1.5; }
+    .member-affiliation { margin: 16px 0 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+
     .principle {
       display: grid;
       grid-template-columns: 1fr auto;
@@ -386,6 +424,11 @@
       .resource-detail { grid-column: 1 / -1; grid-row: 2; }
       .resource-action { grid-column: 2; grid-row: 1; }
       .resource-link:hover { padding-inline: 10px; }
+      .team-section { margin-top: 56px; padding-top: 44px; }
+      .team-header { grid-template-columns: 1fr; gap: 14px; }
+      .team-grid { grid-template-columns: 1fr; margin-top: 28px; }
+      .member-card { padding: 24px 0; }
+      .member-card + .member-card { padding-left: 0; border-top: 1px solid var(--line); border-left: 0; }
       .principle { grid-template-columns: 1fr; margin-top: 54px; }
       .principle p { text-align: left; }
       footer .content { display: block; padding: 28px 0; }
@@ -517,6 +560,37 @@
           <span class="resource-action">了解</span>
         </a>
       </nav>
+
+      <section class="team-section" id="team" aria-labelledby="team-title">
+        <div class="team-header">
+          <div>
+            <p class="section-kicker">MeantByMe 背后的团队</p>
+            <h2 id="team-title">认识 HumanLoop Lab</h2>
+          </div>
+          <p>一支融合 AI 工程、产品设计与网络安全能力的跨学科团队。</p>
+        </div>
+
+        <div class="team-grid">
+          <article class="member-card">
+            <span class="member-number">01</span>
+            <h3>Nick Cai</h3>
+            <p class="member-role">AI 全栈开发与模型部署</p>
+            <p class="member-affiliation">香港科技大学 · 计算机科学与工程</p>
+          </article>
+          <article class="member-card">
+            <span class="member-number">02</span>
+            <h3>Annn</h3>
+            <p class="member-role">产品设计与产品方向</p>
+            <p class="member-affiliation">上海纽约大学 · 数据科学</p>
+          </article>
+          <article class="member-card">
+            <span class="member-number">03</span>
+            <h3>JiaYi</h3>
+            <p class="member-role">后端开发与网络安全</p>
+            <p class="member-affiliation">中国科学院大学 · 网络安全</p>
+          </article>
+        </div>
+      </section>
 
       <div class="principle">
         <blockquote>让话说完，让我做主。</blockquote>

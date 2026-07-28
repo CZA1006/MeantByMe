@@ -48,6 +48,9 @@ The 390 × 844 mobile viewport was captured separately because mobile QR traffic
   `by HumanLoop Lab` team credit sits with the right-side controls on desktop.
 - Mobile retains only the official HumanLoop symbol in the header and repeats
   the complete `by HumanLoop Lab` lockup in the footer.
+- The localized HumanLoop Lab section presents three members in equal desktop
+  columns and a single mobile column, using only the roles and affiliations
+  provided by the team.
 - Browser console warnings/errors checked: none.
 
 ## Comparison history
@@ -89,6 +92,16 @@ The 390 × 844 mobile viewport was captured separately because mobile QR traffic
 - Post-fix evidence: both localized pages preserve the language controls,
   product hierarchy, team attribution, and zero horizontal overflow at desktop
   and 390 × 844 mobile widths.
+
+### Iteration 5
+
+- Finding: the page identified HumanLoop Lab as the team but did not introduce
+  the people or explain the team's multidisciplinary capability.
+- Fix: added localized team sections for Nick Cai, Annn, and JiaYi with concise
+  responsibilities and institutional backgrounds.
+- Post-fix evidence: the three equal desktop columns collapse to a readable
+  single-column sequence on mobile in both languages, with no overflow or
+  unsupported personal details.
 
 ## Findings
 

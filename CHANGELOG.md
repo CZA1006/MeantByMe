@@ -5,6 +5,8 @@ semantic versioning once public releases begin.
 
 ## Unreleased
 
+- Added localized HumanLoop Lab team sections with member roles and
+  institutional backgrounds.
 - Replaced the initial HumanLoop Lab approximation with the supplied official
   lockup, converted to white and presented as a secondary `by HumanLoop Lab`
   team credit rather than a co-equal product collaboration.
