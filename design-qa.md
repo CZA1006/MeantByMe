@@ -52,8 +52,8 @@ The 390 × 844 mobile viewport was captured separately because mobile QR traffic
 - Mobile retains only the official HumanLoop symbol in the header and repeats
   the complete `by HumanLoop Lab` lockup in the footer.
 - The localized HumanLoop Lab section presents three members in equal desktop
-  columns and a single mobile column, using only the roles and affiliations
-  provided by the team.
+  columns and a single mobile column, using only the roles, affiliations, and
+  contact addresses provided by the team.
 - The AdventureX 2026 recognition section distinguishes the Reverse Topic
   Track result from the three Sponsor Track awards. Four equal desktop columns
   collapse to one card per row on mobile.
