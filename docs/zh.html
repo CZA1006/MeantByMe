@@ -85,19 +85,16 @@
       gap: 14px;
     }
     .lab-brand {
-      display: inline-flex;
+      display: block;
       flex: 0 0 auto;
-      align-items: center;
-      gap: 9px;
-      color: #f2f2f7;
-      font-size: 15px;
-      font-weight: 780;
-      letter-spacing: -0.02em;
-      white-space: nowrap;
+      height: 32px;
+      overflow: hidden;
+      line-height: 0;
     }
-    .lab-mark {
-      width: 34px;
-      height: 34px;
+    .lab-lockup {
+      display: block;
+      width: auto;
+      height: 32px;
     }
     .brand-divider {
       flex: 0 0 auto;
@@ -357,8 +354,8 @@
       .header-actions { gap: 10px; }
       .language-option { min-width: 38px; padding-inline: 9px; }
       .brand-cluster { gap: 8px; }
-      .lab-brand span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-      .lab-mark { width: 30px; height: 30px; }
+      .lab-brand { width: 30px; height: 30px; }
+      .lab-lockup { width: auto; max-width: none; height: 30px; }
       .brand-divider { font-size: 14px; }
       .logo { width: min(185px, 48vw); }
       .hero-grid { padding-top: 44px; }
@@ -405,8 +402,7 @@
     <header class="header">
       <div class="brand-cluster">
         <span class="lab-brand">
-          <img class="lab-mark" src="./assets/humanloop-lab-mark-dark.svg" alt="">
-          <span>HumanLoop Lab</span>
+          <img class="lab-lockup" src="./assets/humanloop-lab-lockup-white.png" alt="HumanLoop Lab">
         </span>
         <span class="brand-divider" aria-hidden="true">×</span>
         <img class="logo" src="./assets/logo-lockup-zh-dark.svg" alt="意由我，让话说完，让我做主">

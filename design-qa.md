@@ -3,7 +3,7 @@
 - English implementation (default): [`docs/index.html`](docs/index.html)
 - Chinese implementation: [`docs/zh.html`](docs/zh.html)
 - Brand sources:
-  [`docs/assets/humanloop-lab-mark-dark.svg`](docs/assets/humanloop-lab-mark-dark.svg),
+  [`docs/assets/humanloop-lab-lockup-white.png`](docs/assets/humanloop-lab-lockup-white.png),
   [`docs/assets/logo-lockup-en-dark.svg`](docs/assets/logo-lockup-en-dark.svg)
   and [`docs/assets/logo-lockup-zh-dark.svg`](docs/assets/logo-lockup-zh-dark.svg)
 - Visual-reference and viewport screenshots were generated during the design QA
