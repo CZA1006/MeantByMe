@@ -5,6 +5,7 @@ semantic versioning once public releases begin.
 
 ## Unreleased
 
+- Added the HumanLoop Lab mark and co-branding to both localized project hubs.
 - Added separate English-default and Chinese GitHub Pages hubs with accessible
   language switching and localized product slogans.
 - Replaced the 88 × 192, 15 fps demo asset with a versioned 592 × 1280,

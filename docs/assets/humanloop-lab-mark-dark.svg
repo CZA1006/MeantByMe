@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48"
+     role="img" aria-label="HumanLoop Lab">
+  <title>HumanLoop Lab</title>
+  <path d="M24 4.5 43.5 24 24 43.5 4.5 24Z"
+        fill="none" stroke="#f2f2f7" stroke-width="3.5"
+        stroke-linejoin="round"/>
+  <path d="M24 17.5 30.5 24 24 30.5 17.5 24Z" fill="#f2f2f7"/>
+</svg>

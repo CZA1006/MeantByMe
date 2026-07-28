@@ -78,9 +78,36 @@
       min-height: 112px;
       border-bottom: 1px solid var(--line-dark);
     }
+    .brand-cluster {
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      gap: 14px;
+    }
+    .lab-brand {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 9px;
+      color: #f2f2f7;
+      font-size: 15px;
+      font-weight: 780;
+      letter-spacing: -0.02em;
+      white-space: nowrap;
+    }
+    .lab-mark {
+      width: 34px;
+      height: 34px;
+    }
+    .brand-divider {
+      flex: 0 0 auto;
+      color: #7f9088;
+      font-size: 17px;
+      font-weight: 500;
+    }
     .logo {
       display: block;
-      width: min(270px, 56vw);
+      width: min(250px, 34vw);
       height: auto;
     }
     .header-actions {
@@ -329,6 +356,11 @@
       .header-link { display: none; }
       .header-actions { gap: 10px; }
       .language-option { min-width: 38px; padding-inline: 9px; }
+      .brand-cluster { gap: 8px; }
+      .lab-brand span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+      .lab-mark { width: 30px; height: 30px; }
+      .brand-divider { font-size: 14px; }
+      .logo { width: min(185px, 48vw); }
       .hero-grid { padding-top: 44px; }
       h1 {
         font-size: clamp(43px, 12.2vw, 52px);
@@ -371,7 +403,14 @@
 
   <section class="hero" aria-labelledby="hero-title">
     <header class="header">
-      <img class="logo" src="./assets/logo-lockup-zh-dark.svg" alt="意由我，让话说完，让我做主">
+      <div class="brand-cluster">
+        <span class="lab-brand">
+          <img class="lab-mark" src="./assets/humanloop-lab-mark-dark.svg" alt="">
+          <span>HumanLoop Lab</span>
+        </span>
+        <span class="brand-divider" aria-hidden="true">×</span>
+        <img class="logo" src="./assets/logo-lockup-zh-dark.svg" alt="意由我，让话说完，让我做主">
+      </div>
       <div class="header-actions">
         <nav class="language-switch" aria-label="语言">
           <a class="language-option" href="./" lang="en">EN</a>

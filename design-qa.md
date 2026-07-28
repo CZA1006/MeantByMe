@@ -3,6 +3,7 @@
 - English implementation (default): [`docs/index.html`](docs/index.html)
 - Chinese implementation: [`docs/zh.html`](docs/zh.html)
 - Brand sources:
+  [`docs/assets/humanloop-lab-mark-dark.svg`](docs/assets/humanloop-lab-mark-dark.svg),
   [`docs/assets/logo-lockup-en-dark.svg`](docs/assets/logo-lockup-en-dark.svg)
   and [`docs/assets/logo-lockup-zh-dark.svg`](docs/assets/logo-lockup-zh-dark.svg)
 - Visual-reference and viewport screenshots were generated during the design QA
@@ -43,6 +44,9 @@ The 390 × 844 mobile viewport was captured separately because mobile QR traffic
 - All five resource links are present with their intended href values.
 - Both languages render at 1440 × 1024 and 390 × 844 with no horizontal
   overflow; the language control remains visible at mobile width.
+- The HumanLoop Lab mark and name appear beside the product lockup on desktop;
+  mobile retains the mark while visually hiding only the lab wordmark to
+  preserve the language control and product identity.
 - Browser console warnings/errors checked: none.
 
 ## Comparison history
