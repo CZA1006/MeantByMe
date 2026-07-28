@@ -51,6 +51,9 @@ The 390 × 844 mobile viewport was captured separately because mobile QR traffic
 - The localized HumanLoop Lab section presents three members in equal desktop
   columns and a single mobile column, using only the roles and affiliations
   provided by the team.
+- The AdventureX 2026 recognition section distinguishes the Reverse Topic
+  Track result from the three Sponsor Track awards. Four equal desktop columns
+  collapse to one card per row on mobile.
 - Browser console warnings/errors checked: none.
 
 ## Comparison history
@@ -102,6 +105,18 @@ The 390 × 844 mobile viewport was captured separately because mobile QR traffic
 - Post-fix evidence: the three equal desktop columns collapse to a readable
   single-column sequence on mobile in both languages, with no overflow or
   unsupported personal details.
+
+### Iteration 6
+
+- Finding: the public hub did not record the project's AdventureX Hackathon
+  2026 results or distinguish Topic Track recognition from Sponsor Track
+  awards.
+- Fix: added localized award sections for the Reverse Topic Track runner-up,
+  Qoder Third Prize, Superun.ai Second Prize, and viaim / iFLYTEK Excellence
+  Award, then mirrored the results in both READMEs and the project status.
+- Post-fix evidence: all four awards and their track categories render as four
+  equal columns on desktop and a single-column sequence on mobile in both
+  languages, without horizontal overflow.
 
 ## Findings
 

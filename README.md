@@ -21,6 +21,19 @@ verified-memory write, and personal-voice authorization.
 > **Core principle: AI proposes; the patient decides. Models produce evidence;
 > the deterministic runtime controls consent.**
 
+## AdventureX Hackathon 2026
+
+MeantByMe was created as an **AdventureX Hackathon 2026** project. HumanLoop
+Lab selected one of the event's five Topic Tracks, Reverse, and entered three
+additional Sponsor Tracks.
+
+| Category | Track | Result |
+|---|---|---|
+| Topic Track | Reverse | **Runner-up** |
+| Sponsor Track | Qoder | **Third Prize** |
+| Sponsor Track | Superun.ai | **Second Prize** |
+| Sponsor Track | viaim / iFLYTEK | **Excellence Award** |
+
 ## Co-evolution framework
 
 ![MeantByMe co-evolution framework](docs/assets/meantbyme-co-evolution-en.png)

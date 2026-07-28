@@ -261,6 +261,56 @@
     .step h3 { margin: 14px 0 7px; font-size: 19px; }
     .step p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
 
+    .awards {
+      color: #f8f5ee;
+      background: var(--night-soft);
+      border-bottom: 1px solid var(--line-dark);
+    }
+    .awards .content { padding: 72px 0 76px; }
+    .awards-heading {
+      display: grid;
+      grid-template-columns: 0.8fr 1.2fr;
+      align-items: end;
+      gap: 48px;
+      margin-bottom: 38px;
+    }
+    .awards-heading h2 {
+      margin: 0;
+      font-size: clamp(36px, 5vw, 60px);
+      line-height: 0.98;
+      letter-spacing: -0.05em;
+    }
+    .awards-heading > p {
+      max-width: 560px;
+      margin: 0;
+      color: #abb8b2;
+      font-size: 15px;
+      line-height: 1.7;
+    }
+    .award-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      border-top: 1px solid var(--line-dark);
+      border-bottom: 1px solid var(--line-dark);
+    }
+    .award-card {
+      min-height: 190px;
+      padding: 28px 24px 30px;
+    }
+    .award-card + .award-card { border-left: 1px solid var(--line-dark); }
+    .award-card-primary { background: rgba(64, 200, 195, 0.08); }
+    .award-track {
+      color: var(--accent);
+      font-size: 10px;
+      font-weight: 850;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    .award-card-primary .award-track { color: var(--teal); }
+    .award-card h3 { margin: 18px 0 0; font-size: 21px; letter-spacing: -0.02em; }
+    .award-result { margin: 28px 0 0; color: white; font-size: 27px; font-weight: 820; letter-spacing: -0.035em; }
+    .award-note { margin: 8px 0 0; color: #91a098; font-size: 12px; line-height: 1.5; }
+
     .resources .content { padding: 84px 0 48px; }
     .resource-intro {
       display: grid;
@@ -387,6 +437,9 @@
         padding: 58px 0 72px;
       }
       .video-block video { min-height: 0; aspect-ratio: 16 / 9; }
+      .award-grid { grid-template-columns: repeat(2, 1fr); }
+      .award-card:nth-child(3) { border-top: 1px solid var(--line-dark); border-left: 0; }
+      .award-card:nth-child(4) { border-top: 1px solid var(--line-dark); }
       .resource-intro { grid-template-columns: 1fr; gap: 20px; }
     }
 
@@ -409,6 +462,11 @@
       .video-caption { display: block; }
       .video-caption span { display: block; margin-top: 5px; }
       .flow .content { padding: 46px 0; }
+      .awards .content { padding: 56px 0 60px; }
+      .awards-heading { grid-template-columns: 1fr; gap: 14px; margin-bottom: 28px; }
+      .award-grid { grid-template-columns: 1fr; }
+      .award-card { min-height: 0; padding: 24px 0; }
+      .award-card + .award-card { border-top: 1px solid var(--line-dark); border-left: 0; }
       .section-heading { display: block; }
       .section-heading span { display: block; margin-top: 8px; }
       .steps { grid-template-columns: 1fr; }
@@ -518,6 +576,42 @@
           <span class="step-number">03</span>
           <h3>患者确认</h3>
           <p>只有明确确认后，表达才能使用患者的个人声音。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="awards" id="awards" aria-labelledby="awards-title">
+    <div class="content">
+      <div class="awards-heading">
+        <div>
+          <p class="section-kicker">AdventureX Hackathon 2026</p>
+          <h2 id="awards-title">四项赛道荣誉</h2>
+        </div>
+        <p>MeantByMe 参加了 AdventureX 五大主题赛道之一及三个赞助商赛道，并在四个赛道中全部获得荣誉。</p>
+      </div>
+
+      <div class="award-grid">
+        <article class="award-card award-card-primary">
+          <span class="award-track">主题赛道 · Topic Track</span>
+          <h3>Reverse</h3>
+          <p class="award-result">亚军</p>
+          <p class="award-note">AdventureX 五大主题赛道之一 · Runner-up</p>
+        </article>
+        <article class="award-card">
+          <span class="award-track">赞助商赛道 · Sponsor Track</span>
+          <h3>Qoder</h3>
+          <p class="award-result">三等奖</p>
+        </article>
+        <article class="award-card">
+          <span class="award-track">赞助商赛道 · Sponsor Track</span>
+          <h3>Superun.ai</h3>
+          <p class="award-result">二等奖</p>
+        </article>
+        <article class="award-card">
+          <span class="award-track">赞助商赛道 · Sponsor Track</span>
+          <h3>科大讯飞（viaim）</h3>
+          <p class="award-result">优秀奖</p>
         </article>
       </div>
     </div>

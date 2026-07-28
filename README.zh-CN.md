@@ -18,6 +18,18 @@ MeantByMe 是一个**同意优先的沟通辅助 Agent**，面向表达意图相
 
 > **核心原则：AI 提议，患者决定；模型生成证据，确定性 Runtime 管理同意。**
 
+## AdventureX Hackathon 2026 获奖情况
+
+MeantByMe 是 **AdventureX Hackathon 2026** 参赛项目。HumanLoop Lab 选择了
+赛事五大主题赛道之一的 Reverse 赛道，并参加了三个赞助商赛道。
+
+| 类别 | 赛道 | 成绩 |
+|---|---|---|
+| 主题赛道（Topic Track） | Reverse | **亚军** |
+| 赞助商赛道（Sponsor Track） | Qoder | **三等奖** |
+| 赞助商赛道（Sponsor Track） | Superun.ai | **二等奖** |
+| 赞助商赛道（Sponsor Track） | 科大讯飞（viaim） | **优秀奖** |
+
 ## 共生进化框架
 
 ![MeantByMe 共生进化框架](docs/assets/meantbyme-co-evolution-zh.png)

@@ -1,6 +1,17 @@
 # Current project status
 
-Last verified: **2026-07-26**
+Last verified: **2026-07-28**
+
+## AdventureX Hackathon 2026 recognition
+
+MeantByMe competed in the Reverse Topic Track and three Sponsor Tracks:
+
+| Category | Track | Result |
+|---|---|---|
+| Topic Track | Reverse | Runner-up |
+| Sponsor Track | Qoder | Third Prize |
+| Sponsor Track | Superun.ai | Second Prize |
+| Sponsor Track | viaim / iFLYTEK | Excellence Award |
 
 ## Canonical baseline
 

@@ -5,6 +5,8 @@ semantic versioning once public releases begin.
 
 ## Unreleased
 
+- Recorded MeantByMe's four AdventureX Hackathon 2026 track awards across the
+  localized project hub, READMEs, and current status.
 - Added localized HumanLoop Lab team sections with member roles and
   institutional backgrounds.
 - Replaced the initial HumanLoop Lab approximation with the supplied official
