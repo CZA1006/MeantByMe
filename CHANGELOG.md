@@ -5,6 +5,8 @@ semantic versioning once public releases begin.
 
 ## Unreleased
 
+- Replaced the 88 × 192, 15 fps demo asset with a versioned 592 × 1280,
+  30 fps Web-compatible source on both GitHub Pages video surfaces.
 - Standardized repository documentation, branch governance, contribution and
   security policies.
 - Added the MIT License.

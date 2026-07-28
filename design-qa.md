@@ -24,13 +24,14 @@ The 390 × 844 mobile viewport was captured separately because mobile QR traffic
 - Fonts and typography: system UI and CJK fallbacks preserve the mock's bold bilingual hierarchy, readable body scale, and compact metadata. Display wrapping remains controlled at desktop and mobile widths.
 - Spacing and layout rhythm: the desktop two-column hero, section transitions, three-step flow, and resource rows follow the source proportions. Mobile collapses to a single column with 36 px total side margins and large tap targets.
 - Colors and visual tokens: dark forest hero, warm paper, coral action color, and the logo's teal/violet authorization colors match the selected direction and existing brand assets.
-- Image quality and asset fidelity: the official vector logo from `origin/frontend` is used without reconstruction. The real MP4 uses native browser controls and remains sharp at responsive sizes.
+- Image quality and asset fidelity: the official vector logo from `origin/frontend` is used without reconstruction. Both players use the versioned 592 × 1280, 30 fps MP4 and native browser controls.
 - Copy and content: all five original destinations remain. Consent copy follows repository invariants and does not claim diagnosis, clinical accuracy, autonomous authorization, or unconfirmed personal-voice use.
 
 ## Interaction and runtime checks
 
 - The primary “观看演示视频” CTA resolves uniquely and scrolls to `#demo`.
 - The native MP4 metadata loads and reports a 1:17 duration.
+- The decoded video reports 592 × 1280 pixels rather than the superseded 88 × 192 release asset.
 - All five resource links are present with their intended href values.
 - Desktop and mobile render with no horizontal overflow.
 - Browser console warnings/errors checked: none.
@@ -42,6 +43,16 @@ The 390 × 844 mobile viewport was captured separately because mobile QR traffic
 - Finding: P2 — the first mobile capture made the display title appear oversized and the full-page capture showed an unreliable blank region after the native video.
 - Fix: reduced the mobile display scale to `clamp(43px, 12.2vw, 52px)` and switched verification to the actual 390 × 844 viewport state.
 - Post-fix evidence: the mobile viewport screenshot shows the full `MeantByMe 意由我` title, CTA, and video stage without overflow; DOM bounds confirm the following sections remain contiguous.
+
+### Iteration 2
+
+- Finding: P1 — the release-hosted video decoded at only 88 × 192 pixels,
+  15 fps and approximately 55 Kbps, then scaled to a 560px-tall desktop player.
+- Fix: uploaded the original 592 × 1280, 30 fps H.264/AAC source as
+  `meantbyme-demo-v2.mp4` and updated both `docs/index.html` and
+  `docs/demo.html` to use the versioned URL.
+- Post-fix evidence: the release digest matches the provided source and the
+  browser decodes the new asset at 592 × 1280.
 
 ## Findings
 
